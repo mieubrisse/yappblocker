@@ -148,13 +148,15 @@ How it works
 File locations
 --------------
 
-| File | Path |
+| File | Path (default) |
 |---|---|
 | Config | `~/.config/yappblocker/config.yaml` |
 | Log | `~/.local/state/yappblocker/yappblocker.log` |
 | Launchd plist | `~/Library/LaunchAgents/com.yappblocker.plist` |
 
-The config file is auto-created with a commented-out example on first run.
+Config and log paths follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) and respect `XDG_CONFIG_HOME` and `XDG_STATE_HOME` if set.
+
+The config file is auto-created with a commented-out example by `yappblocker init`.
 
 Uninstall
 ---------
