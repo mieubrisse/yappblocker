@@ -169,5 +169,8 @@ rm -rf ~/Library/Application\ Support/yappblocker
 Further Tooling
 ---------------
 If you liked this, you might like my other tools:
-- 
 
+- [agenc](https://github.com/mieubrisse/agenc): the CEO command center for your fleet of Claudes
+- [cmdk](https://github.com/mieubrisse/cmdk): access any file on your computer with ⌘-k in your terminal
+- [safebrew](https://github.com/mieubrisse/safebrew): automated Homebrew backups to Github
+- [fire-calculator](https://github.com/mieubrisse/fire-calculator): calculate when you'll achieve financial independence
