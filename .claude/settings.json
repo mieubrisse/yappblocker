@@ -1,0 +1,15 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(bd:*)",
+            "Bash(go:*)"
+        ]
+    },
+    "sandbox": {
+        "excludedCommands": ["bd"],
+        "network": {
+            "allowLocalBinding": true,
+            "allowedDomains": ["127.0.0.1", "localhost"]
+        }
+    }
+}
