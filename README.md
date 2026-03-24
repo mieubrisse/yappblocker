@@ -6,23 +6,24 @@ A macOS CLI tool that automatically kills distracting applications on a schedule
 Quick start
 -----------
 
-1. Install the binary:
+1. Install:
 
 ```bash
 brew install mieubrisse/yappblocker/yappblocker
 ```
 
-2. Edit the config (auto-created on first run):
+2. Run the setup wizard:
 
 ```bash
-yappblocker run        # creates ~/.config/yappblocker/config.yaml
-vim ~/.config/yappblocker/config.yaml
+yappblocker init
 ```
 
-3. Enable automatic enforcement:
+This creates a config file at `~/.config/yappblocker/config.yaml` and registers a launchd agent that enforces your schedules every 2 minutes.
+
+3. Edit the config to define your blocked apps and schedules:
 
 ```bash
-yappblocker install    # registers a launchd agent that runs every 2 minutes
+vim ~/.config/yappblocker/config.yaml
 ```
 
 That's it. Any app matching an active schedule window will be killed automatically.
@@ -117,6 +118,10 @@ Kill types
 
 Commands
 --------
+
+### `yappblocker init`
+
+Set up yappblocker for the first time. Creates the default config file, installs the launchd agent, and prints next steps.
 
 ### `yappblocker run`
 
