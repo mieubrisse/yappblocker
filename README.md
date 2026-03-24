@@ -1,8 +1,16 @@
 yappblocker: YAML-configured guardrails for your sleep
 ======================================================
-yappblocker (Yet Another Appblocker) is a minimal app blocker that lets you define apps which will get killed during configurable time periods.
+yappblocker (Yet Another Appblocker) is a minimal app blocker that lets you define apps which will get repeatedly killed during configurable time periods.
 
 For example, I have a "soft shutdown" window from 8:45pm to 6:00am that blocks games, Battle.net, Steam, and Discord, and a "hard shutdown" window from 9:45 to 6:00 that also blocks Chrome, Whatsapp, Messages, etc.
+
+Why?
+----
+I got frustrated with the existing tooling:
+
+MacOS's "Downtime" makes it trivial to skip the block, and doesn't recognize certain programs (Diablo 3, Chrome-installed apps).
+
+Opal and JOMO also couldn't kill Diablo 3, and charge money to have more than one schedule.
 
 Quick start
 -----------
@@ -33,31 +41,9 @@ Configuration
 
 The config file lives at `~/Library/Application Support/yappblocker/config.yaml` and has three sections: `apps`, `appSets`, and `schedules`.
 
-Here is a realistic example:
+Here's my config:
 
 ```yaml
-# yappblocker configuration
-#
-# This file controls which applications get killed and when.
-# Location: ~/Library/Application Support/yappblocker/config.yaml
-#
-# Three sections: apps, appSets, and schedules.
-
-# ============================================================================
-# apps — define each application you want to block
-# ============================================================================
-# Each app needs:
-#   match:    a string that matches the process name (used with pgrep -f)
-#   killType: how to kill it (optional, defaults to "osascript")
-#
-# Kill types:
-#   osascript     - sends AppleScript "quit app" (graceful, for native macOS apps)
-#   pkillGraceful - sends SIGTERM via pkill (for Chrome PWAs, CLI apps)
-#   pkillForce    - sends SIGKILL via pkill (for stubborn processes)
-#
-# To find the right match string for an app, run:
-#   pgrep -f "AppName"
-# while the app is open.
 apps:
   diablo3:
     match: "Diablo III"
@@ -96,12 +82,6 @@ apps:
     match: "Steam"
     killType: osascript
 
-# ============================================================================
-# appSets — group apps together for use in schedules
-# ============================================================================
-# Each set can contain:
-#   apps:    a list of app names from the apps section above
-#   appSets: a list of other app set names (for composition)
 appSets:
   soft_shutdown:
     apps: [diablo3, battle-net, discord, crossover, minecraft, steam]
@@ -109,12 +89,6 @@ appSets:
     appSets: [soft_shutdown]
     apps: [chrome, whatsapp, gmail, messages, safari, firefox]
 
-# ============================================================================
-# schedules — define when to block app sets
-# ============================================================================
-# Each schedule references an appSet and defines time windows.
-# Windows support overnight ranges (e.g., 21:00 to 06:00).
-# Days: mon, tue, wed, thu, fri, sat, sun
 schedules:
   soft_shutdown:
     appSet: soft_shutdown
@@ -140,14 +114,14 @@ schedules:
 
 Each app entry has two fields:
 
-- `match` — a string matched against running processes via `pgrep -f`. To find the right value, run `pgrep -f "AppName"` while the app is open.
+- `match` — used both to detect the app (via `pgrep -f`) and to kill it. To find the right value, run `pgrep -f "AppName"` while the app is open.
 - `killType` — how to terminate the process (optional, defaults to `osascript`).
 
-There are three kill types:
+The `match` value serves double duty: yappblocker first uses it to check if the app is running, then passes it to the kill command. How it gets passed depends on `killType`:
 
-- **`osascript`** (default) — sends an AppleScript `quit app` command. This is a graceful quit that respects save dialogs. The `match` value doubles as the AppleScript application name, so it must match exactly what macOS calls the app (e.g., `"Google Chrome"`, not `"chrome"`). Use this for native macOS apps.
-- **`pkillGraceful`** — sends `SIGTERM` via `pkill -f`. Use this for Chrome PWAs, Electron apps, or processes where the `pgrep -f` match string differs from the macOS application name.
-- **`pkillForce`** — sends `SIGKILL` via `pkill -KILL -f`. Last resort for stubborn processes that ignore SIGTERM.
+- **`osascript`** (default) — runs `quit app "<match>"` via AppleScript. This is a graceful quit that respects save dialogs. The `match` value must be the app's display name as macOS knows it (the name in the top-left menu bar, next to the Apple icon). Start here for most apps.
+- **`pkillGraceful`** — sends `SIGTERM` via `pkill -f "<match>"`. Try this if `osascript` doesn't work for a particular app.
+- **`pkillForce`** — sends `SIGKILL` via `pkill -f "<match>"`. Last resort for stubborn processes that ignore SIGTERM.
 
 ### App sets
 
@@ -170,7 +144,7 @@ Overnight windows are supported. A window like `start: "22:00"` / `end: "07:00"`
 Commands
 --------
 
-Run `yappblocker --help` for the full list of commands and flags.
+Run `yappblocker -h` for the full list of commands and flags.
 
 Upgrading
 ---------
@@ -191,3 +165,9 @@ yappblocker uninstall
 brew uninstall yappblocker
 rm -rf ~/Library/Application\ Support/yappblocker
 ```
+
+Further Tooling
+---------------
+If you liked this, you might like my other tools:
+- 
+
