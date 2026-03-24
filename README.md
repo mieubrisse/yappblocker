@@ -3,13 +3,6 @@ yappblocker
 
 A macOS CLI tool that automatically kills distracting applications on a schedule. Define which apps to block and when, and yappblocker enforces it — no willpower required.
 
-Installation
-------------
-
-```bash
-brew install mieubrisse/yappblocker/yappblocker
-```
-
 Quick start
 -----------
 
@@ -93,6 +86,8 @@ Each app entry defines a process to target:
 - `match` — a string matched against running processes via `pgrep -f`. To find the right value, run `pgrep -f "AppName"` while the app is open.
 - `killType` — how to terminate the process (optional, defaults to `osascript`).
 
+**Note:** When using `osascript` kill type, the `match` value is also used as the application name in the AppleScript quit command. For native macOS apps, the process name and app name are usually the same (e.g., "Discord", "Google Chrome"). If they differ, use `pkillGraceful` or `pkillForce` instead.
+
 ### App sets
 
 App sets group apps together and can compose other app sets:
@@ -109,7 +104,7 @@ Each schedule references an `appSet` and defines one or more time windows:
 - `days` — which days the window is active: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
 - `start` / `end` — times in `HH:MM` format.
 
-Overnight windows are supported. A window like `start: "22:00"` / `end: "07:00"` on `[mon]` means Monday 22:00 through Tuesday 07:00.
+Overnight windows are supported. A window like `start: "22:00"` / `end: "07:00"` on `[mon]` means Monday 22:00 through Tuesday 07:00. A window where `start` equals `end` is active 24 hours on the listed days.
 
 Kill types
 ----------

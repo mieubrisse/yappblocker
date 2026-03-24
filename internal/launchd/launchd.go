@@ -46,14 +46,20 @@ type plistData struct {
 	LogFilePath    string
 }
 
-func getPlistFilePath() string {
-	homeDirPath, _ := os.UserHomeDir()
-	return filepath.Join(homeDirPath, "Library", "LaunchAgents", plistFileName)
+func getPlistFilePath() (string, error) {
+	homeDirPath, err := os.UserHomeDir()
+	if err != nil {
+		return "", stacktrace.Propagate(err, "could not determine home directory")
+	}
+	return filepath.Join(homeDirPath, "Library", "LaunchAgents", plistFileName), nil
 }
 
-func getLogFilePath() string {
-	homeDirPath, _ := os.UserHomeDir()
-	return filepath.Join(homeDirPath, ".local", "state", "yappblocker", "yappblocker.log")
+func getLogFilePath() (string, error) {
+	homeDirPath, err := os.UserHomeDir()
+	if err != nil {
+		return "", stacktrace.Propagate(err, "could not determine home directory")
+	}
+	return filepath.Join(homeDirPath, ".local", "state", "yappblocker", "yappblocker.log"), nil
 }
 
 func Install() error {
@@ -62,7 +68,10 @@ func Install() error {
 		return stacktrace.Propagate(err, "could not find yappblocker in PATH")
 	}
 
-	logFilePath := getLogFilePath()
+	logFilePath, err := getLogFilePath()
+	if err != nil {
+		return err
+	}
 	logDirPath := filepath.Dir(logFilePath)
 	if err := os.MkdirAll(logDirPath, 0755); err != nil {
 		return stacktrace.Propagate(err, "failed to create log directory %q", logDirPath)
@@ -80,7 +89,10 @@ func Install() error {
 		return stacktrace.Propagate(err, "failed to parse plist template")
 	}
 
-	plistFilePath := getPlistFilePath()
+	plistFilePath, err := getPlistFilePath()
+	if err != nil {
+		return err
+	}
 	plistDirPath := filepath.Dir(plistFilePath)
 	if err := os.MkdirAll(plistDirPath, 0755); err != nil {
 		return stacktrace.Propagate(err, "failed to create LaunchAgents directory")
@@ -113,7 +125,10 @@ func Install() error {
 }
 
 func Uninstall() error {
-	plistFilePath := getPlistFilePath()
+	plistFilePath, err := getPlistFilePath()
+	if err != nil {
+		return err
+	}
 
 	if _, err := os.Stat(plistFilePath); os.IsNotExist(err) {
 		fmt.Fprintln(os.Stderr, "No launchd agent found — nothing to uninstall.")

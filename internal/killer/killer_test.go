@@ -26,10 +26,28 @@ func (m *mockRunner) Run(args []string) (string, error) {
 	return "", nil
 }
 
+func TestBuildPgrepPattern(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Discord", "[D]iscord"},
+		{"Steam", "[S]team"},
+		{"a", "[a]"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := buildPgrepPattern(tt.input)
+		if got != tt.expected {
+			t.Errorf("buildPgrepPattern(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
 func TestKillForceApp(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"SomeApp": "123\n456\n",
+			"[S]omeApp": "123\n456\n",
 		},
 	}
 	apps := []*config.App{
@@ -56,7 +74,7 @@ func TestKillForceApp(t *testing.T) {
 func TestKillOsascript(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"MyApp": "789\n",
+			"[M]yApp": "789\n",
 		},
 	}
 	apps := []*config.App{
@@ -83,7 +101,7 @@ func TestKillOsascript(t *testing.T) {
 func TestKillPkillGraceful(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"GracefulApp": "321\n",
+			"[G]racefulApp": "321\n",
 		},
 	}
 	apps := []*config.App{
@@ -110,7 +128,7 @@ func TestKillPkillGraceful(t *testing.T) {
 func TestDryRunDoesNotKill(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"DryApp": "123\n",
+			"[D]ryApp": "123\n",
 		},
 	}
 	apps := []*config.App{

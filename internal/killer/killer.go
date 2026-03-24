@@ -44,7 +44,7 @@ func FindAndKillApps(apps []*config.App, dryRun bool, verbose bool, runner Comma
 	totalPIDs := 0
 
 	for _, app := range apps {
-		stdout, err := runner.Run([]string{"pgrep", "-f", app.Match})
+		stdout, err := runner.Run([]string{"pgrep", "-f", buildPgrepPattern(app.Match)})
 		if err != nil {
 			if verbose {
 				log.Printf("No processes found matching %q (%s)", app.Match, app.Name)
@@ -86,6 +86,17 @@ func parsePIDs(stdout string) []string {
 		}
 	}
 	return pids
+}
+
+// buildPgrepPattern transforms a match string so that pgrep -f won't match its
+// own process. It wraps the first character in a bracket character class, e.g.
+// "Discord" becomes "[D]iscord". The pgrep argv contains the literal bracket
+// form, which does not match itself as a regex.
+func buildPgrepPattern(match string) string {
+	if len(match) == 0 {
+		return match
+	}
+	return "[" + match[:1] + "]" + match[1:]
 }
 
 func buildKillArgs(app *config.App) []string {
