@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"text/template"
 
+	"github.com/adrg/xdg"
 	"github.com/mieubrisse/stacktrace"
 )
 
@@ -54,12 +55,8 @@ func getPlistFilePath() (string, error) {
 	return filepath.Join(homeDirPath, "Library", "LaunchAgents", plistFileName), nil
 }
 
-func getLogFilePath() (string, error) {
-	homeDirPath, err := os.UserHomeDir()
-	if err != nil {
-		return "", stacktrace.Propagate(err, "could not determine home directory")
-	}
-	return filepath.Join(homeDirPath, ".local", "state", "yappblocker", "yappblocker.log"), nil
+func getLogFilePath() string {
+	return filepath.Join(xdg.StateHome, "yappblocker", "yappblocker.log")
 }
 
 func Install() error {
@@ -68,10 +65,7 @@ func Install() error {
 		return stacktrace.Propagate(err, "could not find yappblocker in PATH")
 	}
 
-	logFilePath, err := getLogFilePath()
-	if err != nil {
-		return err
-	}
+	logFilePath := getLogFilePath()
 	logDirPath := filepath.Dir(logFilePath)
 	if err := os.MkdirAll(logDirPath, 0755); err != nil {
 		return stacktrace.Propagate(err, "failed to create log directory %q", logDirPath)

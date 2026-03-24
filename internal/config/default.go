@@ -3,7 +3,6 @@ package config
 const DefaultConfigTemplate = `# yappblocker configuration
 #
 # This file controls which applications get killed and when.
-# Location: ~/.config/yappblocker/config.yaml
 #
 # Three sections: apps, appSets, and schedules.
 

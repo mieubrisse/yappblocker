@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/adrg/xdg"
 	"github.com/mieubrisse/stacktrace"
 	"github.com/mieubrisse/yappblocker/internal/config"
 	"github.com/mieubrisse/yappblocker/internal/killer"
@@ -32,11 +33,7 @@ func init() {
 }
 
 func getConfigFilePath() string {
-	configDirPath, err := os.UserConfigDir()
-	if err != nil {
-		configDirPath = filepath.Join(os.Getenv("HOME"), ".config")
-	}
-	return filepath.Join(configDirPath, "yappblocker", "config.yaml")
+	return filepath.Join(xdg.ConfigHome, "yappblocker", "config.yaml")
 }
 
 func ensureConfigExists(configFilePath string) error {
