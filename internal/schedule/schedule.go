@@ -14,8 +14,14 @@ var dayNames = [7]string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 
 // IsWindowActive reports whether the given time falls within the schedule window.
 func IsWindowActive(window config.WindowDef, now time.Time) bool {
-	startHour, startMinute := parseTime(window.Start)
-	endHour, endMinute := parseTime(window.End)
+	startHour, startMinute, err := parseTime(window.Start)
+	if err != nil {
+		return false
+	}
+	endHour, endMinute, err := parseTime(window.End)
+	if err != nil {
+		return false
+	}
 
 	todayDay := dayName(now)
 	nowMinutes := now.Hour()*60 + now.Minute()
@@ -59,24 +65,24 @@ func prevDayName(t time.Time) string {
 }
 
 // parseTime parses an "HH:MM" string into hour and minute components.
-// It panics on malformed input since config validation should catch bad values.
-func parseTime(s string) (hour, minute int) {
+// Returns an error on malformed input instead of panicking.
+func parseTime(s string) (hour, minute int, err error) {
 	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {
-		panic(fmt.Sprintf("invalid time format %q: expected HH:MM", s))
+		return 0, 0, fmt.Errorf("invalid time format %q: expected HH:MM", s)
 	}
 
-	hour, err := strconv.Atoi(parts[0])
+	hour, err = strconv.Atoi(parts[0])
 	if err != nil {
-		panic(fmt.Sprintf("invalid hour in %q: %v", s, err))
+		return 0, 0, fmt.Errorf("invalid hour in %q: %v", s, err)
 	}
 
 	minute, err = strconv.Atoi(parts[1])
 	if err != nil {
-		panic(fmt.Sprintf("invalid minute in %q: %v", s, err))
+		return 0, 0, fmt.Errorf("invalid minute in %q: %v", s, err)
 	}
 
-	return hour, minute
+	return hour, minute, nil
 }
 
 // containsDay checks whether the given day name appears in the list.

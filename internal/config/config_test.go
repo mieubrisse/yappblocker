@@ -295,7 +295,7 @@ schedules:
   workday:
     appSet: "social"
     windows:
-      - days: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+      - days: ["mon", "tue", "wed", "thu", "fri"]
         start: "09:00"
         end: "17:00"
 `
@@ -341,7 +341,7 @@ schedules:
   workday:
     appSet: "nonexistent"
     windows:
-      - days: ["monday"]
+      - days: ["mon"]
         start: "09:00"
         end: "17:00"
 `
@@ -351,5 +351,82 @@ schedules:
 	}
 	if !strings.Contains(err.Error(), "nonexistent") {
 		t.Errorf("error should mention 'nonexistent', got: %v", err)
+	}
+}
+
+func TestInvalidDayNameReturnsError(t *testing.T) {
+	yaml := `
+apps:
+  slack:
+    match: "Slack"
+appSets:
+  social:
+    apps:
+      - slack
+schedules:
+  workday:
+    appSet: "social"
+    windows:
+      - days: ["monday"]
+        start: "09:00"
+        end: "17:00"
+`
+	_, err := Load(yaml)
+	if err == nil {
+		t.Fatal("expected error for invalid day name 'monday'")
+	}
+	if !strings.Contains(err.Error(), "monday") {
+		t.Errorf("error should mention 'monday', got: %v", err)
+	}
+}
+
+func TestInvalidTimeFormatReturnsError(t *testing.T) {
+	yaml := `
+apps:
+  slack:
+    match: "Slack"
+appSets:
+  social:
+    apps:
+      - slack
+schedules:
+  workday:
+    appSet: "social"
+    windows:
+      - days: ["mon"]
+        start: "9:00"
+        end: "17:00"
+`
+	_, err := Load(yaml)
+	if err == nil {
+		t.Fatal("expected error for invalid time format '9:00'")
+	}
+	if !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("error should mention 'invalid', got: %v", err)
+	}
+}
+
+func TestScheduleEmptyAppSetReturnsError(t *testing.T) {
+	yaml := `
+apps:
+  slack:
+    match: "Slack"
+appSets:
+  social:
+    apps:
+      - slack
+schedules:
+  workday:
+    windows:
+      - days: ["mon"]
+        start: "09:00"
+        end: "17:00"
+`
+	_, err := Load(yaml)
+	if err == nil {
+		t.Fatal("expected error for schedule with empty appSet")
+	}
+	if !strings.Contains(err.Error(), "empty appSet") {
+		t.Errorf("error should mention 'empty appSet', got: %v", err)
 	}
 }

@@ -1,9 +1,24 @@
 package config
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/mieubrisse/stacktrace"
 	"gopkg.in/yaml.v3"
 )
+
+// ValidDays is the set of accepted day name abbreviations.
+var ValidDays = map[string]bool{
+	"mon": true,
+	"tue": true,
+	"wed": true,
+	"thu": true,
+	"fri": true,
+	"sat": true,
+	"sun": true,
+}
 
 // KillType determines how an application is terminated.
 type KillType string
@@ -114,11 +129,43 @@ func validateAppSets(cfg *Config) error {
 
 func validateSchedules(cfg *Config) error {
 	for schedName, sched := range cfg.Schedules {
-		if sched.AppSet != "" {
-			if _, ok := cfg.AppSets[sched.AppSet]; !ok {
-				return stacktrace.NewError("schedule %q references unknown appSet %q", schedName, sched.AppSet)
+		if sched.AppSet == "" {
+			return stacktrace.NewError("schedule %q has empty appSet", schedName)
+		}
+		if _, ok := cfg.AppSets[sched.AppSet]; !ok {
+			return stacktrace.NewError("schedule %q references unknown appSet %q", schedName, sched.AppSet)
+		}
+
+		for i, w := range sched.Windows {
+			for _, day := range w.Days {
+				if !ValidDays[day] {
+					return stacktrace.NewError("schedule %q window %d has invalid day %q", schedName, i, day)
+				}
+			}
+			if err := validateTimeFormat(w.Start); err != nil {
+				return stacktrace.NewError("schedule %q window %d has invalid start time: %v", schedName, i, err)
+			}
+			if err := validateTimeFormat(w.End); err != nil {
+				return stacktrace.NewError("schedule %q window %d has invalid end time: %v", schedName, i, err)
 			}
 		}
+	}
+	return nil
+}
+
+// validateTimeFormat checks that a time string matches HH:MM with valid hour (00-23) and minute (00-59).
+func validateTimeFormat(s string) error {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
+		return fmt.Errorf("expected HH:MM format, got %q", s)
+	}
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil || hour < 0 || hour > 23 {
+		return fmt.Errorf("invalid hour in %q", s)
+	}
+	minute, err := strconv.Atoi(parts[1])
+	if err != nil || minute < 0 || minute > 59 {
+		return fmt.Errorf("invalid minute in %q", s)
 	}
 	return nil
 }
