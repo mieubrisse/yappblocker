@@ -6,7 +6,6 @@ For example, I have a "soft shutdown" window from 8:45pm to 6:00am that blocks g
 
 Quick start
 -----------
-
 1. Install:
 
 ```bash
@@ -37,9 +36,40 @@ The config file lives at `~/Library/Application Support/yappblocker/config.yaml`
 Here is a realistic example:
 
 ```yaml
+# yappblocker configuration
+#
+# This file controls which applications get killed and when.
+# Location: ~/Library/Application Support/yappblocker/config.yaml
+#
+# Three sections: apps, appSets, and schedules.
+
+# ============================================================================
+# apps — define each application you want to block
+# ============================================================================
+# Each app needs:
+#   match:    a string that matches the process name (used with pgrep -f)
+#   killType: how to kill it (optional, defaults to "osascript")
+#
+# Kill types:
+#   osascript     - sends AppleScript "quit app" (graceful, for native macOS apps)
+#   pkillGraceful - sends SIGTERM via pkill (for Chrome PWAs, CLI apps)
+#   pkillForce    - sends SIGKILL via pkill (for stubborn processes)
+#
+# To find the right match string for an app, run:
+#   pgrep -f "AppName"
+# while the app is open.
 apps:
+  diablo3:
+    match: "Diablo III"
+    killType: osascript
+  battle-net:
+    match: "Battle.net"
+    killType: osascript
   discord:
     match: "Discord"
+    killType: osascript
+  whatsapp:
+    match: "WhatsApp"
     killType: osascript
   chrome:
     match: "Google Chrome"
@@ -47,48 +77,77 @@ apps:
   gmail:
     match: "Gmail.app"
     killType: pkillGraceful
+  messages:
+    match: "Messages"
+    killType: osascript
+  crossover:
+    match: "CrossOver"
+    killType: osascript
+  minecraft:
+    match: "Minecraft"
+    killType: osascript
+  safari:
+    match: "Safari"
+    killType: osascript
+  firefox:
+    match: "Firefox"
+    killType: osascript
   steam:
     match: "Steam"
     killType: osascript
-  minecraft:
-    match: "minecraft"
-    killType: pkillForce
 
+# ============================================================================
+# appSets — group apps together for use in schedules
+# ============================================================================
+# Each set can contain:
+#   apps:    a list of app names from the apps section above
+#   appSets: a list of other app set names (for composition)
 appSets:
-  social:
-    apps: [discord, gmail]
-  gaming:
-    apps: [steam, minecraft]
-  allDistractions:
-    apps: [chrome]
-    appSets: [social, gaming]
+  soft_shutdown:
+    apps: [diablo3, battle-net, discord, crossover, minecraft, steam]
+  hard_shutdown:
+    appSets: [soft_shutdown]
+    apps: [chrome, whatsapp, gmail, messages, safari, firefox]
 
+# ============================================================================
+# schedules — define when to block app sets
+# ============================================================================
+# Each schedule references an appSet and defines time windows.
+# Windows support overnight ranges (e.g., 21:00 to 06:00).
+# Days: mon, tue, wed, thu, fri, sat, sun
 schedules:
-  workday:
-    appSet: allDistractions
+  soft_shutdown:
+    appSet: soft_shutdown
     windows:
-      - days: [mon, tue, wed, thu, fri]
-        start: "09:00"
-        end: "17:00"
-  bedtime:
-    appSet: social
-    windows:
-      - days: [sun, mon, tue, wed, thu]
-        start: "22:00"
-        end: "07:00"
+      - days: [mon, tue, wed, thu]
+        start: "20:45"
+        end: "06:00"
       - days: [fri, sat]
-        start: "23:00"
-        end: "09:00"
+        start: "21:30"
+        end: "06:00"
+  hard_shutdown:
+    appSet: hard_shutdown
+    windows:
+      - days: [mon, tue, wed, thu]
+        start: "21:45"
+        end: "06:00"
+      - days: [fri, sat]
+        start: "22:30"
+        end: "06:00"
 ```
 
 ### Apps
 
-Each app entry defines a process to target:
+Each app entry has two fields:
 
 - `match` — a string matched against running processes via `pgrep -f`. To find the right value, run `pgrep -f "AppName"` while the app is open.
 - `killType` — how to terminate the process (optional, defaults to `osascript`).
 
-**Note:** When using `osascript` kill type, the `match` value is also used as the application name in the AppleScript quit command. For native macOS apps, the process name and app name are usually the same (e.g., "Discord", "Google Chrome"). If they differ, use `pkillGraceful` or `pkillForce` instead.
+There are three kill types:
+
+- **`osascript`** (default) — sends an AppleScript `quit app` command. This is a graceful quit that respects save dialogs. The `match` value doubles as the AppleScript application name, so it must match exactly what macOS calls the app (e.g., `"Google Chrome"`, not `"chrome"`). Use this for native macOS apps.
+- **`pkillGraceful`** — sends `SIGTERM` via `pkill -f`. Use this for Chrome PWAs, Electron apps, or processes where the `pgrep -f` match string differs from the macOS application name.
+- **`pkillForce`** — sends `SIGKILL` via `pkill -KILL -f`. Last resort for stubborn processes that ignore SIGTERM.
 
 ### App sets
 
@@ -108,56 +167,19 @@ Each schedule references an `appSet` and defines one or more time windows:
 
 Overnight windows are supported. A window like `start: "22:00"` / `end: "07:00"` on `[mon]` means Monday 22:00 through Tuesday 07:00. A window where `start` equals `end` is active 24 hours on the listed days.
 
-Kill types
-----------
-
-| Kill type | Method | Use when |
-|---|---|---|
-| `osascript` | Sends an AppleScript "quit app" command | Native macOS apps (Discord, Chrome, Steam). Graceful quit that respects save dialogs. This is the default. |
-| `pkillGraceful` | Sends `SIGTERM` via `pkill -f` | Chrome PWAs, Electron apps, or CLI processes that don't respond to AppleScript. |
-| `pkillForce` | Sends `SIGKILL` via `pkill -KILL -f` | Stubborn processes that ignore SIGTERM. Use as a last resort. |
-
 Commands
 --------
 
-### `yappblocker init`
+Run `yappblocker --help` for the full list of commands and flags.
 
-Set up yappblocker for the first time. Creates the default config file, installs the launchd agent, and prints next steps.
+Upgrading
+---------
 
-### `yappblocker run`
+```bash
+brew upgrade yappblocker
+```
 
-Check all schedules against the current time and kill any blocked apps that are running.
-
-Flags:
-
-- `--dry-run` — print what would be killed without actually killing anything.
-- `--verbose` — print detailed output about active schedules and matched processes.
-
-### `yappblocker install`
-
-Register a launchd agent that runs `yappblocker run` every 2 minutes. The agent starts immediately and persists across reboots.
-
-### `yappblocker uninstall`
-
-Remove the launchd agent, stopping automatic execution.
-
-How it works
-------------
-
-`yappblocker install` creates a launchd plist at `~/Library/LaunchAgents/com.yappblocker.plist` that invokes `yappblocker run` every 120 seconds. Each invocation is stateless: it reads the config, checks which schedule windows are currently active, finds matching processes with `pgrep -f`, and kills them using the configured kill type. There is no daemon, no background process, and no state between runs.
-
-File locations
---------------
-
-| File | Path (default) |
-|---|---|
-| Config | `~/Library/Application Support/yappblocker/config.yaml` |
-| Log | `~/Library/Application Support/yappblocker/yappblocker.log` |
-| Launchd plist | `~/Library/LaunchAgents/com.yappblocker.plist` |
-
-Config and log paths respect `XDG_CONFIG_HOME` and `XDG_STATE_HOME` if set.
-
-The config file is auto-created with a commented-out example by `yappblocker init`.
+The launchd agent points to the Homebrew symlink, so upgrades take effect automatically — no need to re-run `yappblocker install`.
 
 Uninstall
 ---------
@@ -169,8 +191,3 @@ yappblocker uninstall
 brew uninstall yappblocker
 rm -rf ~/Library/Application\ Support/yappblocker
 ```
-
-License
--------
-
-MIT
