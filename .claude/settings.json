@@ -7,6 +7,9 @@
     },
     "sandbox": {
         "excludedCommands": ["bd"],
+        "filesystem": {
+            "allowWrite": ["~/go/pkg/mod/cache"]
+        },
         "network": {
             "allowLocalBinding": true,
             "allowedDomains": ["127.0.0.1", "localhost"]
