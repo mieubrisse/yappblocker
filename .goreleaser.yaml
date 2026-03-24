@@ -30,6 +30,13 @@ brews:
     license: "MIT"
     install: |
       bin.install "yappblocker"
+    caveats: |
+      ⚠️  To start blocking apps on a schedule, run:
+
+        yappblocker install
+
+      This registers a launchd agent that runs every 2 minutes.
+      Edit your config at ~/.config/yappblocker/config.yaml first.
     test: |
       system "#{bin}/yappblocker", "--help"
 
