@@ -1,8 +1,8 @@
 yappblocker: YAML-configured guardrails for your sleep
 ======================================================
-yappblocker (Yet Another Appblocker) is a minimal app blocker that lets you define apps which will get repeatedly killed during configurable time periods.
+yappblocker (Yet Another Appblocker) is a YAML-configured app blocker that lets you kill distracting apps on a schedule.
 
-For example, I have a "soft shutdown" window from 8:45pm to 6:00am that blocks games, Battle.net, Steam, and Discord, and a "hard shutdown" window from 9:45 to 6:00 that also blocks Chrome, Whatsapp, Messages, etc.
+For example, I have a "soft shutdown" schedule from 8:45pm to 6:00am that blocks games, Battle.net, Steam, and Discord, and a "hard shutdown" schedule from 9:45 to 6:00 that also blocks Chrome, Whatsapp, Messages, etc.
 
 Why?
 ----
