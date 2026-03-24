@@ -1,7 +1,8 @@
-yappblocker
-===========
+yappblocker: YAML-configured guardrails for your sleep
+======================================================
+yappblocker (Yet Another Appblocker) is a minimal app blocker that lets you define apps which will get killed during configurable time periods.
 
-A macOS CLI tool that automatically kills distracting applications on a schedule. Define which apps to block and when, and yappblocker enforces it — no willpower required.
+For example, I have a "soft shutdown" window from 8:45pm to 6:00am that blocks games, Battle.net, Steam, and Discord, and a "hard shutdown" window from 9:45 to 6:00 that also blocks Chrome, Whatsapp, Messages, etc.
 
 Quick start
 -----------
@@ -18,12 +19,12 @@ brew install mieubrisse/yappblocker/yappblocker
 yappblocker init
 ```
 
-This creates a config file at `~/.config/yappblocker/config.yaml` and registers a launchd agent that enforces your schedules every 2 minutes.
+This creates a config file at `~/Library/Application Support/yappblocker/config.yaml` and registers a launchd agent that enforces your schedules every 2 minutes.
 
 3. Edit the config to define your blocked apps and schedules:
 
 ```bash
-vim ~/.config/yappblocker/config.yaml
+vim ~/Library/Application\ Support/yappblocker/config.yaml
 ```
 
 That's it. Any app matching an active schedule window will be killed automatically.
@@ -31,7 +32,7 @@ That's it. Any app matching an active schedule window will be killed automatical
 Configuration
 -------------
 
-The config file lives at `~/.config/yappblocker/config.yaml` and has three sections: `apps`, `appSets`, and `schedules`.
+The config file lives at `~/Library/Application Support/yappblocker/config.yaml` and has three sections: `apps`, `appSets`, and `schedules`.
 
 Here is a realistic example:
 
@@ -150,11 +151,11 @@ File locations
 
 | File | Path (default) |
 |---|---|
-| Config | `~/.config/yappblocker/config.yaml` |
-| Log | `~/.local/state/yappblocker/yappblocker.log` |
+| Config | `~/Library/Application Support/yappblocker/config.yaml` |
+| Log | `~/Library/Application Support/yappblocker/yappblocker.log` |
 | Launchd plist | `~/Library/LaunchAgents/com.yappblocker.plist` |
 
-Config and log paths follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) and respect `XDG_CONFIG_HOME` and `XDG_STATE_HOME` if set.
+Config and log paths respect `XDG_CONFIG_HOME` and `XDG_STATE_HOME` if set.
 
 The config file is auto-created with a commented-out example by `yappblocker init`.
 
@@ -166,8 +167,7 @@ To fully remove yappblocker:
 ```bash
 yappblocker uninstall
 brew uninstall yappblocker
-rm -rf ~/.config/yappblocker
-rm -rf ~/.local/state/yappblocker
+rm -rf ~/Library/Application\ Support/yappblocker
 ```
 
 License
