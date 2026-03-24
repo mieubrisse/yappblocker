@@ -101,6 +101,14 @@ func validateAppSets(cfg *Config) error {
 			}
 		}
 	}
+
+	// Validate no circular references by attempting to resolve all sets
+	for setName := range cfg.AppSets {
+		if _, err := cfg.ResolveAppSet(setName); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

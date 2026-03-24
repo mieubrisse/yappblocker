@@ -223,11 +223,7 @@ appSets:
     appSets:
       - a
 `
-	cfg, err := Load(yaml)
-	if err != nil {
-		t.Fatalf("unexpected error during load: %v", err)
-	}
-	_, err = cfg.ResolveAppSet("a")
+	_, err := Load(yaml)
 	if err == nil {
 		t.Fatal("expected error for circular reference")
 	}
