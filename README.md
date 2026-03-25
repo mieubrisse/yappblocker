@@ -177,11 +177,62 @@ Development
 - [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) (`go install golang.org/x/vuln/cmd/govulncheck@latest`)
 - [deadcode](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) (`go install golang.org/x/tools/cmd/deadcode@latest`)
 
-### Quality checks
+### Getting started
+
+Clone the repository and run the full build pipeline:
 
 ```bash
-make check    # Full pipeline: tidy, fmt, vet, lint, vulncheck, deadcode, test
-make test     # Tests only (with -race)
+git clone https://github.com/mieubrisse/yappblocker.git
+cd yappblocker
+make build
+```
+
+`make build` configures Git hooks, runs formatting and linting checks, runs the test suite, and compiles the binary. The output binary is at `_build/yappblocker`.
+
+### Common tasks
+
+| Command | What it does |
+|---|---|
+| `make build` | Full pipeline: configure hooks, check, compile |
+| `make compile` | Build the binary only (skip checks) |
+| `make check` | Run formatting, vet, lint, govulncheck, deadcode, and tests |
+| `make test` | Run the test suite only |
+| `make run` | Build and run the binary (pass args via `ARGS="..."`) |
+| `make fmt` | Auto-format code |
+| `make clean` | Remove build artifacts |
+
+### Running the binary
+
+Use `make run` to build and run in one step:
+
+```bash
+make run
+make run ARGS="version"
+make run ARGS="--help"
+```
+
+Or run the compiled binary directly:
+
+```bash
+_build/yappblocker
+_build/yappblocker version
+```
+
+### Project layout
+
+```
+src/                    Go source code
+  cmd/                  CLI commands (one directory per command)
+    version/            "version" subcommand
+  internal/             Internal packages
+    buildinfo/          Build-time version injection
+    config/             YAML config loading and validation
+    killer/             App killing logic
+    launchd/            launchd agent management
+    schedule/           Schedule matching
+  main.go              Entry point
+_build/                 Compiled binary (gitignored)
+.githooks/              Git hooks (activated by make setup)
 ```
 
 Further Tooling

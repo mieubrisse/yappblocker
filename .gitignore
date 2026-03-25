@@ -1,11 +1,33 @@
-
-# Dolt database files (added by bd init)
-.dolt/
-*.db
-
-# Beads / Dolt files (added by bd init)
-.beads-credential-key
-
-# Build artifacts
+# Build output
+_build/
 yappblocker
 dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Beads / Dolt runtime files (created by bd init)
+.beads/
+.dolt/
+*.db
+.beads-credential-key
