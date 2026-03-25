@@ -1,0 +1,55 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # Checks for unchecked errors
+    - gosec         # Inspects source code for security problems
+    - govet         # Reports suspicious constructs
+    - staticcheck   # Advanced static analysis
+    - unused        # Checks for unused constants, variables, functions and types
+    - gocyclo       # Computes and checks the cyclomatic complexity of functions
+  settings:
+    gocyclo:
+      min-complexity: 20
+    errcheck:
+      exclude-functions:
+        # Close/cleanup in defer — nothing useful to do with the error
+        - (*database/sql.DB).Close
+        - (*database/sql.Conn).Close
+        - (*database/sql.Rows).Close
+        - (*os.File).Close
+        - (*net/http.Response).Body.Close
+        - (*net/http.Server).Close
+        - (io.Closer).Close
+        - (net.Listener).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+        # Cobra flag helpers that only fail on programmer error
+        - (*github.com/spf13/pflag.FlagSet).MarkHidden
+        # Subprocess Run in defer/fire-and-forget — yappblocker-specific
+        - (*os/exec.Cmd).Run
+    gosec:
+      excludes:
+        - G101  # Hardcoded credentials — false positives on const names
+        - G104  # Errors unhandled — covered by errcheck with exclusions
+        - G204  # Subprocess with variable — unavoidable in a CLI tool
+        - G301  # Directory permissions 0755 — standard for CLI tools
+        - G302  # File permissions 0644 — standard for log files
+        - G304  # File inclusion via variable — unavoidable in a CLI tool
+        - G306  # WriteFile permissions 0644 — standard for non-secret files
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF*"   # Disable quickfix suggestions — style, not correctness
+        - "-ST1000" # Package comments — not enforced yet
+        - "-ST1003" # Naming conventions (e.g., JSON vs Json) — fix over time
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

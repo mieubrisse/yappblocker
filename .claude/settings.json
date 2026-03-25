@@ -1,23 +1,66 @@
 {
     "permissions": {
         "allow": [
-            "Bash(bd:*)",
+            "Read(./**)",
+            "Edit(./**)",
+            "Write(./**)",
+            "Glob(./**)",
+            "Grep(./**)",
             "Bash(go:*)",
+            "Bash(make:*)",
+            "Bash(gofmt:*)",
+            "Bash(golangci-lint:*)",
+            "Bash(bd:*)",
+            "Bash(goreleaser:*)",
+            "Bash(gh:*)",
             "Bash(govulncheck:*)",
             "Bash(deadcode:*)"
+        ],
+        "deny": [
+            "Read(./.env)",
+            "Read(./.env.*)",
+            "Read(./secrets/**)",
+            "Bash(rm -rf:*)",
+            "Bash(sudo:*)",
+            "Bash(git commit --no-verify:*)",
+            "Bash(bd reset:*)",
+            "Bash(bd delete:*)",
+            "Bash(bd admin cleanup:*)",
+            "Bash(bd admin compact:*)",
+            "Bash(bd purge:*)",
+            "Bash(bd gc:*)"
         ]
     },
     "sandbox": {
-        "excludedCommands": ["bd"],
         "filesystem": {
-            "allowWrite": [
-                "~/go/pkg/mod/cache",
-                "~/Library/Caches/golangci-lint"
-            ]
+            "allowWrite": ["//tmp", "//private/tmp/claude", "~/Library/Caches/go-build", "~/.cache/go-build", "~/Library/Caches/golangci-lint"]
         },
         "network": {
-            "allowLocalBinding": true,
-            "allowedDomains": ["127.0.0.1", "localhost", "vuln.go.dev"]
+            "allowedHosts": ["vuln.go.dev"]
         }
+    },
+    "hooks": {
+        "SessionStart": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bd prime"
+                    }
+                ]
+            }
+        ],
+        "PreCompact": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bd prime"
+                    }
+                ]
+            }
+        ]
     }
 }

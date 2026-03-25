@@ -4,10 +4,11 @@ project_name: yappblocker
 
 before:
   hooks:
-    - go mod tidy
+    - cd src && go mod tidy
 
 builds:
-  - env:
+  - dir: src
+    env:
       - CGO_ENABLED=0
     goos:
       - darwin

@@ -171,10 +171,11 @@ Development
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) (stable)
-- [golangci-lint](https://golangci-lint.run/welcome/install/)
-- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck): `go install golang.org/x/vuln/cmd/govulncheck@latest`
-- [deadcode](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode): `go install golang.org/x/tools/cmd/deadcode@latest`
+- [Go](https://go.dev/dl/) (version specified in `src/go.mod`)
+- [GNU Make](https://www.gnu.org/software/make/)
+- [golangci-lint](https://golangci-lint.run/welcome/install/) (`brew install golangci-lint`)
+- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) (`go install golang.org/x/vuln/cmd/govulncheck@latest`)
+- [deadcode](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) (`go install golang.org/x/tools/cmd/deadcode@latest`)
 
 ### Quality checks
 
