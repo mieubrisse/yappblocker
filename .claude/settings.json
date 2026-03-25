@@ -2,17 +2,22 @@
     "permissions": {
         "allow": [
             "Bash(bd:*)",
-            "Bash(go:*)"
+            "Bash(go:*)",
+            "Bash(govulncheck:*)",
+            "Bash(deadcode:*)"
         ]
     },
     "sandbox": {
         "excludedCommands": ["bd"],
         "filesystem": {
-            "allowWrite": ["~/go/pkg/mod/cache"]
+            "allowWrite": [
+                "~/go/pkg/mod/cache",
+                "~/Library/Caches/golangci-lint"
+            ]
         },
         "network": {
             "allowLocalBinding": true,
-            "allowedDomains": ["127.0.0.1", "localhost"]
+            "allowedDomains": ["127.0.0.1", "localhost", "vuln.go.dev"]
         }
     }
 }

@@ -166,6 +166,23 @@ brew uninstall yappblocker
 rm -rf ~/Library/Application\ Support/yappblocker
 ```
 
+Development
+-----------
+
+### Prerequisites
+
+- [Go](https://go.dev/dl/) (stable)
+- [golangci-lint](https://golangci-lint.run/welcome/install/)
+- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck): `go install golang.org/x/vuln/cmd/govulncheck@latest`
+- [deadcode](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode): `go install golang.org/x/tools/cmd/deadcode@latest`
+
+### Quality checks
+
+```bash
+make check    # Full pipeline: tidy, fmt, vet, lint, vulncheck, deadcode, test
+make test     # Tests only (with -race)
+```
+
 Further Tooling
 ---------------
 If you liked this, you might like my other tools:
