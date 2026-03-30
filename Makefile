@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 VERSION_PKG := github.com/mieubrisse/yappblocker/internal/buildinfo
 
 GIT_DIRTY := $(shell git diff --quiet 2>/dev/null && echo clean || echo dirty)
