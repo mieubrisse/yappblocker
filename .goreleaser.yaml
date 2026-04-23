@@ -4,7 +4,7 @@ project_name: yappblocker
 
 before:
   hooks:
-    - cd src && go mod tidy
+    - sh -c "cd src && go mod tidy"
 
 builds:
   - dir: src
