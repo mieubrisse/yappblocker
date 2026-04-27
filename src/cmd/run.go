@@ -54,10 +54,17 @@ func ensureConfigExists(configFilePath string) error {
 	return nil
 }
 
+func requireConfigExists(configFilePath string) error {
+	if _, err := os.Stat(configFilePath); err != nil {
+		return stacktrace.NewError("config file not found at %s\nRun 'yappblocker init' to create one.", configFilePath)
+	}
+	return nil
+}
+
 func executeRun(cmd *cobra.Command, args []string) error {
 	configFilePath := getConfigFilePath()
 
-	if err := ensureConfigExists(configFilePath); err != nil {
+	if err := requireConfigExists(configFilePath); err != nil {
 		return err
 	}
 

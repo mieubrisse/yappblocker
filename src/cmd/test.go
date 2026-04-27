@@ -42,6 +42,10 @@ func executeTest(cmd *cobra.Command, args []string) error {
 func runTest(scheduleName string) error {
 	configFilePath := getConfigFilePath()
 
+	if err := requireConfigExists(configFilePath); err != nil {
+		return err
+	}
+
 	data, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return stacktrace.Propagate(err, "failed to read config file %q", configFilePath)
