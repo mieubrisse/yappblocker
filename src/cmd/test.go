@@ -50,6 +50,13 @@ func runTest(scheduleName string) error {
 	}
 
 	now := time.Now()
+
+	// A pause suspends blocking, so everything asking this question — including the
+	// Claude Code prompt hook — should see the schedule as inactive while one runs.
+	if isBlockingPaused(now, os.Stderr) {
+		return nil
+	}
+
 	for _, window := range sched.Windows {
 		if schedule.IsWindowActive(window, now) {
 			return errScheduleActive

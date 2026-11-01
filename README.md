@@ -146,6 +146,27 @@ Commands
 
 Run `yappblocker -h` for the full list of commands and flags.
 
+Pausing
+-------
+
+A pause suspends blocking for a bounded stretch of time, after which it resumes on its own. It exists so that a legitimate need during a blocking window has an answer other than uninstalling.
+
+```bash
+yappblocker pause 45m    # suspend blocking for 45 minutes
+yappblocker pause        # show whether blocking is paused, and how much pausing is left
+yappblocker resume       # end a pause early
+```
+
+The rules are deliberately tight, because a pause you can take freely is not a guard at all:
+
+- **Three hours maximum**, and the three hours are *wall clock from your first pause*, not a budget of paused minutes. Taking several short pauses therefore loses you time against taking one long one — there is nothing to gain by splitting them up.
+- **Pausing opens a 24-hour window.** For the first three hours of it you may pause again, up to whatever is left of those three hours. After that, pausing is unavailable until the 24 hours are up.
+- **A confirmation phrase has to be typed** before a pause starts. `resume` needs no phrase — turning blocking back on is never the thing worth discouraging — and gives no allowance back.
+
+While a pause is running, `yappblocker run` kills nothing and `yappblocker test` reports every schedule as inactive, so anything built on `test` (such as a shell hook) sees the pause too.
+
+Pause state lives in `~/Library/Application Support/yappblocker/pause.json`. If that file is missing, damaged, or unreadable, blocking stays **on** and a warning goes to the log.
+
 Upgrading
 ---------
 
@@ -165,6 +186,13 @@ yappblocker uninstall
 brew uninstall yappblocker
 rm -rf ~/Library/Application\ Support/yappblocker
 ```
+
+`yappblocker uninstall` is deliberately awkward, for the same reason the tool exists at all — the moment you want it gone is the moment it is doing its job:
+
+- **It refuses to run while any schedule's window is open.** Inside a window the only move is `yappblocker pause`; the uninstall has to wait until blocking lifts.
+- **Outside a window it requires a long confirmation phrase, typed by hand.** Pasting it does not work: input that arrives faster than anyone could type is rejected, as is a phrase piped or redirected in rather than typed at a terminal. Capitalization and spacing are ignored; every word is not.
+
+None of this is security, and it is not meant to be — `launchctl unload`, `brew uninstall`, and deleting the plist all walk around it. It is there to make the impulsive path slow and deliberate.
 
 Development
 -----------

@@ -87,6 +87,14 @@ func executeRun(cmd *cobra.Command, args []string) error {
 	}
 
 	now := time.Now()
+
+	if isBlockingPaused(now, os.Stderr) {
+		if verbose {
+			fmt.Fprintln(os.Stderr, "Blocking is paused — killing nothing")
+		}
+		return nil
+	}
+
 	runner := &killer.RealRunner{}
 
 	var activeApps []*config.App
