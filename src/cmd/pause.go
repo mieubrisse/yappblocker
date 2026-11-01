@@ -44,14 +44,20 @@ func executePause(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runPause(args, time.Now(), os.Stderr)
+	err := runPause(args, time.Now, os.Stderr)
 	if err != nil && !errors.Is(err, errPauseRefused) {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
 	return err
 }
 
-func runPause(args []string, now time.Time, out io.Writer) error {
+// runPause takes a clock rather than a single timestamp because typing the
+// confirmation phrase takes real time — at least 13 seconds, by design — and the
+// pause has to be measured from when it was confirmed, not from when the command
+// was typed. Someone who leaves the prompt open for twenty minutes should not get a
+// pause that is twenty minutes shorter than they asked for, or one already expired.
+func runPause(args []string, nowFunc func() time.Time, out io.Writer) error {
+	now := nowFunc()
 	stateFilePath := getPauseStateFilePath()
 
 	state, err := pause.Load(stateFilePath)
@@ -90,13 +96,30 @@ func runPause(args []string, now time.Time, out io.Writer) error {
 		return errPauseRefused
 	}
 
+	if pause.IsPaused(state, now) {
+		proposedEnd := now.Add(requestedDuration)
+		if proposedEnd.Before(state.PausedUntil) {
+			fmt.Fprintf(out, "Blocking is already paused until %s, and pausing for %s would cut that short, to %s.\n",
+				state.PausedUntil.Format(pauseTimeFormat), formatDuration(requestedDuration), proposedEnd.Format(pauseTimeFormat))
+			fmt.Fprintln(out, "Ask for a longer pause to extend it, or run 'yappblocker resume' to end it now.")
+			return errPauseRefused
+		}
+	}
+
 	if err := confirm.Prompt(os.Stdin, out, confirm.PausePhrase); err != nil {
 		return err
 	}
 
-	newState, err := pause.Begin(state, requestedDuration, now)
+	// The clock is read again here, because the pause runs from the moment it was
+	// confirmed rather than from whenever the command was first typed.
+	confirmedAt := nowFunc()
+
+	newState, err := pause.Begin(state, requestedDuration, confirmedAt)
 	if err != nil {
-		return fmt.Errorf("failed to work out the new pause: %w", err)
+		fmt.Fprintf(out, "Too much time passed while you were typing, and %s no longer fits in your pause window.\n",
+			formatDuration(requestedDuration))
+		printRemainingAllowance(out, state, confirmedAt)
+		return errPauseRefused
 	}
 
 	if err := pause.Save(stateFilePath, newState); err != nil {
@@ -104,7 +127,7 @@ func runPause(args []string, now time.Time, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "\nBlocking is paused until %s.\n", newState.PausedUntil.Format(pauseTimeFormat))
-	printRemainingAllowance(out, newState, newState.PausedUntil)
+	printAllowanceAfterPauseEnds(out, newState)
 	fmt.Fprintln(out, "Run 'yappblocker resume' to turn blocking back on sooner.")
 
 	return nil
@@ -123,9 +146,23 @@ func printPauseStatus(out io.Writer, state *pause.State, now time.Time) {
 	printRemainingAllowance(out, state, now)
 }
 
-// printRemainingAllowance says how much more pausing is available, reckoned from the
-// given moment — which is "now" for a status report, and the end of a pause just
-// taken when reporting back on it.
+// printAllowanceAfterPauseEnds reports what will be left once the pause just taken
+// runs out, which is the figure someone wants after taking one. Said in the future
+// tense, because saying it in the present would describe a moment that has not
+// arrived — right now the pause itself is still using the window up.
+func printAllowanceAfterPauseEnds(out io.Writer, state *pause.State) {
+	allowance := pause.AllowanceRemaining(state, state.PausedUntil)
+	if allowance <= 0 {
+		fmt.Fprintf(out, "That uses up your window, so there will be no more pausing until %s.\n",
+			pause.CooldownEndsAt(state).Format(pauseTimeFormat))
+		return
+	}
+
+	fmt.Fprintf(out, "Once it ends, you will be able to pause again for up to %s.\n", formatDuration(allowance))
+}
+
+// printRemainingAllowance says how much more pausing is available as of the given
+// moment.
 func printRemainingAllowance(out io.Writer, state *pause.State, asOf time.Time) {
 	allowance := pause.AllowanceRemaining(state, asOf)
 	if allowance <= 0 {

@@ -190,9 +190,9 @@ rm -rf ~/Library/Application\ Support/yappblocker
 `yappblocker uninstall` is deliberately awkward, for the same reason the tool exists at all — the moment you want it gone is the moment it is doing its job:
 
 - **It refuses to run while any schedule's window is open.** Inside a window the only move is `yappblocker pause`; the uninstall has to wait until blocking lifts.
-- **Outside a window it requires a long confirmation phrase, typed by hand.** Pasting it does not work: input that arrives faster than anyone could type is rejected, as is a phrase piped or redirected in rather than typed at a terminal. Capitalization and spacing are ignored; every word is not.
+- **Outside a window it requires a long confirmation phrase, typed by hand.** An answer given sooner than the phrase could be typed is rejected, which rules out pasting it and hitting Enter. So is a phrase piped or redirected in rather than typed at a terminal. Capitalization and spacing are ignored; every word is not.
 
-None of this is security, and it is not meant to be — `launchctl unload`, `brew uninstall`, and deleting the plist all walk around it. It is there to make the impulsive path slow and deliberate.
+None of this is security, and it is not meant to be — `launchctl unload`, `brew uninstall`, and deleting the plist all walk around it, and so does pasting the phrase and then waiting out the clock. It is there to make the impulsive path slow and deliberate, and a minute of sitting still is the point either way.
 
 Development
 -----------
