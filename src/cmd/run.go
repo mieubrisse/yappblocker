@@ -61,21 +61,29 @@ func requireConfigExists(configFilePath string) error {
 	return nil
 }
 
-func executeRun(cmd *cobra.Command, args []string) error {
-	configFilePath := getConfigFilePath()
-
+// loadConfigFile reads and parses the config file, requiring that it already exists.
+func loadConfigFile(configFilePath string) (*config.Config, error) {
 	if err := requireConfigExists(configFilePath); err != nil {
-		return err
+		return nil, err
 	}
 
 	data, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return stacktrace.Propagate(err, "failed to read config file %q", configFilePath)
+		return nil, stacktrace.Propagate(err, "failed to read config file %q", configFilePath)
 	}
 
 	cfg, err := config.Load(string(data))
 	if err != nil {
-		return stacktrace.Propagate(err, "failed to load config")
+		return nil, stacktrace.Propagate(err, "failed to load config")
+	}
+
+	return cfg, nil
+}
+
+func executeRun(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfigFile(getConfigFilePath())
+	if err != nil {
+		return err
 	}
 
 	now := time.Now()

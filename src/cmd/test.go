@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/mieubrisse/stacktrace"
-	"github.com/mieubrisse/yappblocker/internal/config"
 	"github.com/mieubrisse/yappblocker/internal/schedule"
 	"github.com/spf13/cobra"
 )
@@ -40,20 +39,9 @@ func executeTest(cmd *cobra.Command, args []string) error {
 }
 
 func runTest(scheduleName string) error {
-	configFilePath := getConfigFilePath()
-
-	if err := requireConfigExists(configFilePath); err != nil {
+	cfg, err := loadConfigFile(getConfigFilePath())
+	if err != nil {
 		return err
-	}
-
-	data, err := os.ReadFile(configFilePath)
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to read config file %q", configFilePath)
-	}
-
-	cfg, err := config.Load(string(data))
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to load config")
 	}
 
 	sched, ok := cfg.Schedules[scheduleName]
