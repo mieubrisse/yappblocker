@@ -156,18 +156,6 @@ func TestBeginRefusesPausesOutsideTheAllowance(t *testing.T) {
 		now       time.Time
 	}{
 		{
-			name:      "longer than the three hour maximum",
-			state:     nil,
-			requested: 4 * time.Hour,
-			now:       windowStart,
-		},
-		{
-			name:      "longer than what is left of the three hour window",
-			state:     &State{WindowStart: windowStart, PausedUntil: windowStart.Add(30 * time.Minute)},
-			requested: 2*time.Hour + time.Minute,
-			now:       windowStart.Add(time.Hour),
-		},
-		{
 			name:      "during the cooldown that follows the three hour window",
 			state:     &State{WindowStart: windowStart, PausedUntil: windowStart.Add(time.Hour)},
 			requested: time.Minute,
@@ -341,6 +329,75 @@ func TestCooldownEndsAt(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := CooldownEndsAt(test.state); !got.Equal(test.want) {
 				t.Errorf("got %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+// Moving the system clock backwards must not buy back the time it jumped. The leak
+// this guards against was not a single over-long pause but a pair of them: a pause
+// taken before the stored window start, granted a full three hours, followed by
+// another one using the remainder of a window that still closed three hours after
+// that stored start.
+func TestChainedPauseAfterBackwardClockJumpStaysUnderTheMaximum(t *testing.T) {
+	jump := 10 * time.Minute
+	clockMovedBackTo := windowStart.Add(-jump)
+
+	state := &State{WindowStart: windowStart, PausedUntil: clockMovedBackTo}
+
+	first, err := Begin(state, 3*time.Hour, clockMovedBackTo)
+	if err != nil {
+		t.Fatalf("expected the first pause to be allowed, got: %v", err)
+	}
+
+	second, err := Begin(first, jump, first.PausedUntil)
+	if err != nil {
+		// Refusing the second pause outright is also a correct outcome here.
+		return
+	}
+
+	totalPaused := first.PausedUntil.Sub(clockMovedBackTo) +
+		second.PausedUntil.Sub(first.PausedUntil)
+	if totalPaused > 3*time.Hour {
+		t.Errorf("accumulated %v of pause in one window, want at most 3h", totalPaused)
+	}
+}
+
+// A request reaching past the end of the window is trimmed to it rather than
+// refused, because the few seconds spent typing the confirmation phrase would
+// otherwise make the largest advertised pause the one pause nobody can take.
+func TestBeginTrimsARequestThatOvershootsTheWindowEnd(t *testing.T) {
+	tests := []struct {
+		name            string
+		state           *State
+		requested       time.Duration
+		now             time.Time
+		wantPausedUntil time.Time
+	}{
+		{
+			name:            "overshooting by the seconds spent typing",
+			state:           &State{WindowStart: windowStart, PausedUntil: windowStart},
+			requested:       2 * time.Hour,
+			now:             windowStart.Add(time.Hour + 15*time.Second),
+			wantPausedUntil: windowStart.Add(3 * time.Hour),
+		},
+		{
+			name:            "a first pause asking past the maximum",
+			state:           nil,
+			requested:       4 * time.Hour,
+			now:             windowStart,
+			wantPausedUntil: windowStart.Add(3 * time.Hour),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			newState, err := Begin(test.state, test.requested, test.now)
+			if err != nil {
+				t.Fatalf("expected the pause to be trimmed and allowed, got: %v", err)
+			}
+			if !newState.PausedUntil.Equal(test.wantPausedUntil) {
+				t.Errorf("paused until: got %v, want %v", newState.PausedUntil, test.wantPausedUntil)
 			}
 		})
 	}

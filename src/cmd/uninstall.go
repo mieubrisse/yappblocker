@@ -37,19 +37,26 @@ func executeUninstall(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runUninstall(time.Now())
+	err := runUninstall(time.Now)
 	if err != nil && !errors.Is(err, errUninstallRefused) {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
 	return err
 }
 
-func runUninstall(now time.Time) error {
-	if err := requireNoBlockingWindowOpen(now, os.Stderr); err != nil {
+func runUninstall(nowFunc func() time.Time) error {
+	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr); err != nil {
 		return err
 	}
 
 	if err := confirm.Prompt(os.Stdin, os.Stderr, confirm.UninstallPhrase); err != nil {
+		return err
+	}
+
+	// Checked again on the far side of the phrase: typing it takes at least 40
+	// seconds, and a window that opened in the meantime has to be honoured. Being
+	// mid-phrase at 20:00 is exactly the moment this guard is for.
+	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr); err != nil {
 		return err
 	}
 

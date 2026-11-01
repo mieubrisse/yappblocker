@@ -44,23 +44,28 @@ func AllowanceRemaining(state *State, now time.Time) time.Duration {
 		return pauseAllowanceWindow
 	}
 
+	// No clamp to the maximum is needed here: isWithinCooldownWindow only accepts a
+	// window start at or before now, so the remainder can never exceed the window.
 	remaining := state.WindowStart.Add(pauseAllowanceWindow).Sub(now)
 	if remaining <= 0 {
 		return 0
-	}
-
-	// A window start in the future means the clock moved or the state file was
-	// edited; neither should be able to buy more than the stated maximum.
-	if remaining > pauseAllowanceWindow {
-		return pauseAllowanceWindow
 	}
 
 	return remaining
 }
 
 // Begin returns the state that results from starting a pause of the requested
-// length. The caller is expected to have consulted AllowanceRemaining first so that
-// it can explain a refusal in its own words; the checks here are a backstop.
+// length. A pause can never end later than three hours after the window opened, so a
+// request reaching past that is trimmed back to it rather than refused.
+//
+// The trimming is what makes asking for the stated maximum work. The caller shows
+// the user their allowance, the user asks for exactly that much, and then time
+// passes while they type the confirmation phrase — by the time it is confirmed, the
+// request overshoots the window end by those few seconds. Refusing there would mean
+// the largest pause the user is told they can have is the one pause they can never
+// actually take. A request that overshoots by more than typing drift is a different
+// matter, and the caller turns it down with an explanation before asking for the
+// phrase at all.
 func Begin(state *State, requestedDuration time.Duration, now time.Time) (*State, error) {
 	if requestedDuration <= 0 {
 		return nil, fmt.Errorf("a pause has to be longer than zero, got %v", requestedDuration)
@@ -70,8 +75,10 @@ func Begin(state *State, requestedDuration time.Duration, now time.Time) (*State
 	if allowance <= 0 {
 		return nil, errors.New("pausing is not allowed right now")
 	}
-	if requestedDuration > allowance {
-		return nil, fmt.Errorf("a pause of %v is longer than the %v still allowed", requestedDuration, allowance)
+
+	grantedDuration := requestedDuration
+	if grantedDuration > allowance {
+		grantedDuration = allowance
 	}
 
 	// Staying inside an open window keeps its original start, so the three hours
@@ -83,7 +90,7 @@ func Begin(state *State, requestedDuration time.Duration, now time.Time) (*State
 
 	return &State{
 		WindowStart: windowStart,
-		PausedUntil: now.Add(requestedDuration),
+		PausedUntil: now.Add(grantedDuration),
 	}, nil
 }
 
@@ -159,6 +166,17 @@ func Save(stateFilePath string, state *State) error {
 
 // isWithinCooldownWindow reports whether a previous pause's twenty-four hour window
 // is still running, which is what makes its start date the one that counts.
+//
+// A start date in the future is not believed. It means the clock moved backwards or
+// the file was edited, and carrying such a date forward would let a backward jump
+// buy back exactly the time it jumped: the pause taken before the stored start would
+// be granted a full three hours, and the window would still close three hours after
+// that stored start, leaving room for another pause on top. Treating it as no window
+// at all makes the next pause anchor a fresh one from now, which can grant three
+// hours and no more.
 func isWithinCooldownWindow(state *State, now time.Time) bool {
-	return state != nil && now.Before(state.WindowStart.Add(pauseCooldownWindow))
+	if state == nil || state.WindowStart.After(now) {
+		return false
+	}
+	return now.Before(state.WindowStart.Add(pauseCooldownWindow))
 }
