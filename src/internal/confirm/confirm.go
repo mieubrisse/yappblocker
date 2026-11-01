@@ -20,8 +20,15 @@ import (
 
 // maxPlausibleTypingCharsPerSecond is the fastest sustained typing speed a human is
 // credibly capable of. 14 characters per second is about 168 words per minute —
-// comfortably beyond any real typist, so a genuine attempt is never rejected for
-// being quick, while a paste is caught every time.
+// comfortably beyond any real typist, so a genuine attempt is never turned down for
+// being quick.
+//
+// What this buys, precisely: the terminal hands over a whole line at once when Enter
+// is pressed, so the measurement is how long the prompt sat open, not how the
+// characters got there. That defeats pasting the phrase and submitting it, which is
+// the impulsive move worth stopping. It does not defeat pasting the phrase and then
+// waiting out the clock before pressing Enter — but that is a deliberate minute of
+// sitting still, which is the reflection this gate exists to force anyway.
 const maxPlausibleTypingCharsPerSecond = 14.0
 
 // substitutedCharacters maps characters that keyboards and editors silently
@@ -79,16 +86,17 @@ func FindFirstDifference(expected, actual string) *Difference {
 	return nil
 }
 
-// MinTypingDuration is how long the given phrase must take to arrive before it is
-// believable that someone typed it. Input that lands faster was pasted.
+// MinTypingDuration is the shortest time the prompt must stay open before an answer
+// is accepted — long enough that the phrase could plausibly have been typed in it.
 func MinTypingDuration(phrase string) time.Duration {
 	seconds := float64(len(phrase)) / maxPlausibleTypingCharsPerSecond
 	return time.Duration(seconds * float64(time.Second))
 }
 
 // Prompt shows the phrase and makes the user type it back, returning nil only once
-// the input matches and took long enough to have been typed rather than pasted. It
-// re-prompts on a mistake so a typo near the end does not cost a full retype.
+// the input matches and the prompt has been open long enough for it to have been
+// typed. It re-prompts on a mistake, so a typo near the end does not cost a full
+// retype.
 func Prompt(in *os.File, out io.Writer, phrase string) error {
 	if !isInteractiveTerminal(in) {
 		// Plain errors rather than stacktrace errors in this function and the loop
@@ -108,7 +116,7 @@ func promptUntilTyped(in io.Reader, out io.Writer, phrase string, nowFunc func()
 	minTypingDuration := MinTypingDuration(phrase)
 
 	fmt.Fprintf(out, "\nType this phrase to continue, or press Ctrl-C to abort:\n\n%s\n\n", phrase)
-	fmt.Fprintf(out, "Capitalization and spacing do not matter; every word does. Typing it takes about %v,\nand input arriving faster than that is rejected as a paste.\n\n", minTypingDuration.Round(time.Second))
+	fmt.Fprintf(out, "Capitalization and spacing do not matter; every word does. Typing it takes about %v,\nso an answer given sooner than that will not be accepted.\n\n", minTypingDuration.Round(time.Second))
 
 	scanner := bufio.NewScanner(in)
 	for {
@@ -129,7 +137,7 @@ func promptUntilTyped(in io.Reader, out io.Writer, phrase string, nowFunc func()
 		}
 
 		if elapsed < minTypingDuration {
-			fmt.Fprintf(out, "\nThat arrived in %v, which is faster than the phrase can be typed. Type it out instead of pasting it.\n\n", elapsed.Round(time.Second))
+			fmt.Fprintf(out, "\nThat came back in %v, sooner than the phrase can be typed. Sit with it and type it out.\n\n", elapsed.Round(time.Second))
 			continue
 		}
 

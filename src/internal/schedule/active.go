@@ -24,6 +24,11 @@ func FindActiveBlocking(cfg *config.Config, now time.Time) *ActiveBlocking {
 	var latestEnd time.Time
 
 	for scheduleName, sched := range cfg.Schedules {
+		isScheduleActive := false
+
+		// Every open window is considered, not just the first one found: a schedule
+		// may list overlapping windows, and stopping early would report blocking as
+		// lifting at the earliest of their ends rather than the latest.
 		for _, window := range sched.Windows {
 			if !IsWindowActive(window, now) {
 				continue
@@ -34,11 +39,14 @@ func FindActiveBlocking(cfg *config.Config, now time.Time) *ActiveBlocking {
 				continue
 			}
 
-			scheduleNames = append(scheduleNames, scheduleName)
+			isScheduleActive = true
 			if windowEnd.After(latestEnd) {
 				latestEnd = windowEnd
 			}
-			break
+		}
+
+		if isScheduleActive {
+			scheduleNames = append(scheduleNames, scheduleName)
 		}
 	}
 

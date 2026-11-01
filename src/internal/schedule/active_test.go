@@ -88,6 +88,36 @@ func TestFindActiveBlocking(t *testing.T) {
 			wantEndsAt:        time.Date(2026, 3, 26, 7, 0, 0, 0, time.Local),
 		},
 		{
+			name: "one schedule with two open windows reports the later end, not the first found",
+			schedules: map[string]*config.ScheduleDef{
+				"soft_shutdown": {
+					AppSet: "games",
+					Windows: []config.WindowDef{
+						{Days: []string{"wed"}, Start: "09:00", End: "17:00"},
+						{Days: []string{"wed"}, Start: "12:00", End: "20:00"},
+					},
+				},
+			},
+			now:               time.Date(2026, 3, 25, 14, 0, 0, 0, time.Local),
+			wantScheduleNames: []string{"soft_shutdown"},
+			wantEndsAt:        time.Date(2026, 3, 25, 20, 0, 0, 0, time.Local),
+		},
+		{
+			name: "a schedule with two open windows is named only once",
+			schedules: map[string]*config.ScheduleDef{
+				"soft_shutdown": {
+					AppSet: "games",
+					Windows: []config.WindowDef{
+						{Days: []string{"wed"}, Start: "12:00", End: "20:00"},
+						{Days: []string{"wed"}, Start: "09:00", End: "17:00"},
+					},
+				},
+			},
+			now:               time.Date(2026, 3, 25, 14, 0, 0, 0, time.Local),
+			wantScheduleNames: []string{"soft_shutdown"},
+			wantEndsAt:        time.Date(2026, 3, 25, 20, 0, 0, 0, time.Local),
+		},
+		{
 			name: "a schedule with an unparseable window is ignored rather than reported",
 			schedules: map[string]*config.ScheduleDef{
 				"broken": {

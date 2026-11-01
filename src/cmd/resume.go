@@ -51,11 +51,13 @@ func runResume(now time.Time, out io.Writer) error {
 		return nil
 	}
 
-	if err := pause.Save(stateFilePath, pause.Resume(state, now)); err != nil {
+	resumedState := pause.Resume(state, now)
+	if err := pause.Save(stateFilePath, resumedState); err != nil {
 		return err
 	}
 
 	fmt.Fprintln(out, "Blocking is back on.")
+	printRemainingAllowance(out, resumedState, now)
 
 	return nil
 }

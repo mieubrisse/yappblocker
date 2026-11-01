@@ -334,7 +334,7 @@ func TestPromptUntilTypedRejectsAPhraseThatArrivedTooFast(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected pasted input to be refused, but it was accepted")
 	}
-	if !strings.Contains(output.String(), "faster than the phrase can be typed") {
+	if !strings.Contains(output.String(), "sooner than the phrase can be typed") {
 		t.Errorf("expected the user to be told why the input was refused, got:\n%s", output.String())
 	}
 }
