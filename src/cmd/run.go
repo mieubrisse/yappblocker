@@ -88,10 +88,11 @@ func executeRun(cmd *cobra.Command, args []string) error {
 
 	now := time.Now()
 
+	// Said unconditionally, not just when verbose: launchd runs this bare every two
+	// minutes and its output is the log that answers "why didn't that app close?".
+	// A silent log during a pause would make the tool look broken instead of paused.
 	if isBlockingPaused(now, os.Stderr) {
-		if verbose {
-			fmt.Fprintln(os.Stderr, "Blocking is paused — killing nothing")
-		}
+		fmt.Fprintln(os.Stderr, "Blocking is paused — killing nothing")
 		return nil
 	}
 

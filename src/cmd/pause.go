@@ -18,6 +18,14 @@ import (
 // plus a date for anything that lands on another day.
 const pauseTimeFormat = "15:04 on Mon 2 Jan"
 
+// advertisedAllowanceTolerance is how far past the true remaining allowance a
+// request may reach and still be accepted. The allowance is shown to the nearest
+// minute, so "up to 2h" can stand for 1h59m40s — and a user asking for exactly the
+// 2h they were just offered should not be turned down for it. Requests inside this
+// tolerance are trimmed to the window's end by pause.Begin; anything past it is a
+// real overshoot and gets turned down with an explanation.
+const advertisedAllowanceTolerance = time.Minute
+
 // errPauseRefused is returned when a pause is turned down on purpose. It carries no
 // message because the explanation is printed where the refusal happens.
 var errPauseRefused = errors.New("")
@@ -88,7 +96,7 @@ func runPause(args []string, nowFunc func() time.Time, out io.Writer) error {
 		fmt.Fprintln(out, "That is the point: pauses are meant to be exceptional, and you have had this day's.")
 		return errPauseRefused
 	}
-	if requestedDuration > allowance {
+	if requestedDuration > allowance+advertisedAllowanceTolerance {
 		// Worded to hold whether this is a first pause capped at the 3-hour maximum
 		// or a later one capped by what is left of an open window.
 		fmt.Fprintf(out, "You asked for %s, but the most you can pause right now is %s.\n",
