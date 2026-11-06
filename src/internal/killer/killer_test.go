@@ -96,7 +96,7 @@ func TestKillForceApp(t *testing.T) {
 		{Name: "someapp", Match: "SomeApp", KillType: config.KillTypePkillForce},
 	}
 
-	count := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	count, _ := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 
 	if count != 2 {
 		t.Errorf("expected count 2, got %d", count)
@@ -126,7 +126,7 @@ func TestKillOsascript(t *testing.T) {
 		{Name: "myapp", Match: "MyApp", KillType: config.KillTypeOsascript},
 	}
 
-	count := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	count, _ := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 
 	if count != 1 {
 		t.Errorf("expected count 1, got %d", count)
@@ -156,7 +156,7 @@ func TestKillPkillGraceful(t *testing.T) {
 		{Name: "graceful", Match: "GracefulApp", KillType: config.KillTypePkillGraceful},
 	}
 
-	count := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	count, _ := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 
 	if count != 1 {
 		t.Errorf("expected count 1, got %d", count)
@@ -183,7 +183,7 @@ func TestDryRunDoesNotKill(t *testing.T) {
 		{Name: "dryapp", Match: "DryApp", KillType: config.KillTypePkillForce},
 	}
 
-	count := FindAndKillApps(apps, true, false, runner, noGracePeriodSoTestsDoNotSleep)
+	count, _ := FindAndKillApps(apps, true, false, runner, noGracePeriodSoTestsDoNotSleep)
 
 	if count != 1 {
 		t.Errorf("expected count 1, got %d", count)
@@ -205,7 +205,7 @@ func TestNoMatchingProcesses(t *testing.T) {
 		{Name: "noapp", Match: "NoApp", KillType: config.KillTypePkillForce},
 	}
 
-	count := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	count, _ := FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 
 	if count != 0 {
 		t.Errorf("expected count 0, got %d", count)
@@ -229,12 +229,16 @@ func TestKillReportedAsSuccessfulButIgnoredIsLogged(t *testing.T) {
 		{Name: "stubborn", Match: "StubbornApp", KillType: config.KillTypeOsascript},
 	}
 
+	var ignored []*config.App
 	logged := captureLogOutput(t, func() {
-		FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 	})
 
 	if !strings.Contains(logged, "StubbornApp") || !strings.Contains(logged, "still running") {
 		t.Errorf("expected a warning that the app is still running, got log output: %q", logged)
+	}
+	if len(ignored) != 1 || ignored[0].Name != "stubborn" {
+		t.Errorf("expected the ignoring app returned for the caller to notify about, got %v", ignored)
 	}
 }
 
