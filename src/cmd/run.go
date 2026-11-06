@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -91,8 +92,14 @@ func executeRun(cmd *cobra.Command, args []string) error {
 	// Said unconditionally, not just when verbose: launchd runs this bare every two
 	// minutes and its output is the log that answers "why didn't that app close?".
 	// A silent log during a pause would make the tool look broken instead of paused.
+	//
+	// Logged rather than printed, because the log is append-only and read with tail:
+	// an undated line sitting at the end of it describes the present no matter how
+	// old it is. The first version of this printed bare, and five such lines from a
+	// ten-minute pause went on reading as "blocking is off right now" for the six
+	// days after that pause had expired.
 	if isBlockingPaused(now, os.Stderr) {
-		fmt.Fprintln(os.Stderr, "Blocking is paused — killing nothing")
+		log.Println("Blocking is paused — killing nothing")
 		return nil
 	}
 
