@@ -46,8 +46,10 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-// FindAndKillApps finds running instances of the given apps and kills them.
-// Returns the total number of matched PIDs across all apps.
+// FindAndKillApps finds running instances of the given apps and kills them. It
+// returns the total number of matched PIDs across all apps, and the apps that were
+// still running after being killed — which the caller needs in order to say so
+// somewhere louder than the log.
 //
 // Kills that report success are checked afterwards, because a reported success is
 // not evidence the app died. `osascript -e 'quit app "X"'` exits 0 whether or not
@@ -61,7 +63,7 @@ func FindAndKillApps(
 	verbose bool,
 	runner CommandRunner,
 	gracePeriod time.Duration,
-) int {
+) (int, []*config.App) {
 	totalPIDs := 0
 	var appsSentAKill []*config.App
 
@@ -98,11 +100,12 @@ func FindAndKillApps(
 		appsSentAKill = append(appsSentAKill, app)
 	}
 
+	var appsThatIgnoredTheirKill []*config.App
 	if len(appsSentAKill) > 0 {
-		reportAppsThatIgnoredTheirKill(appsSentAKill, runner, gracePeriod)
+		appsThatIgnoredTheirKill = reportAppsThatIgnoredTheirKill(appsSentAKill, runner, gracePeriod)
 	}
 
-	return totalPIDs
+	return totalPIDs, appsThatIgnoredTheirKill
 }
 
 // findPIDs returns the PIDs of every process matching the app. The result is empty
@@ -115,16 +118,18 @@ func findPIDs(app *config.App, runner CommandRunner) []string {
 	return parsePIDs(stdout)
 }
 
-// reportAppsThatIgnoredTheirKill waits out the grace period and then logs every app
-// that is still running. These are the silent failures the exit code hides: the
-// kill command said it worked, so without this nothing in the tool would ever
-// mention them, and a window would appear to have been enforced when it was not.
+// reportAppsThatIgnoredTheirKill waits out the grace period, then logs and returns
+// every app that is still running. These are the silent failures the exit code
+// hides: the kill command said it worked, so without this nothing in the tool would
+// ever mention them, and a window would appear to have been enforced when it was
+// not.
 //
 // The wait is taken once for the whole set rather than per app, because each app
 // would otherwise add its own grace period to a run that repeats every two minutes.
-func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gracePeriod time.Duration) {
+func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gracePeriod time.Duration) []*config.App {
 	time.Sleep(gracePeriod)
 
+	var stillRunning []*config.App
 	for _, app := range apps {
 		survivingPIDs := findPIDs(app, runner)
 		if len(survivingPIDs) == 0 {
@@ -134,7 +139,10 @@ func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gr
 			"Warning: kill of %q (%s) reported success but %d process(es) are still running %v later — the app is ignoring it",
 			app.Match, app.Name, len(survivingPIDs), gracePeriod,
 		)
+		stillRunning = append(stillRunning, app)
 	}
+
+	return stillRunning
 }
 
 // formatOutputForLog renders a command's output as a suffix for a log line,

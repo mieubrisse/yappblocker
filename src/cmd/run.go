@@ -5,12 +5,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/mieubrisse/stacktrace"
 	"github.com/mieubrisse/yappblocker/internal/config"
 	"github.com/mieubrisse/yappblocker/internal/killer"
+	"github.com/mieubrisse/yappblocker/internal/notify"
 	"github.com/mieubrisse/yappblocker/internal/schedule"
 	"github.com/spf13/cobra"
 )
@@ -137,10 +139,16 @@ func executeRun(cmd *cobra.Command, args []string) error {
 		if verbose {
 			fmt.Fprintln(os.Stderr, "No active schedules")
 		}
+		// Still reconciled, so that an episode recorded while a window was open is
+		// forgotten once it closes and the next window's first refusal is reported
+		// rather than suppressed as old news.
+		if !dryRun {
+			reconcileIgnoredKillNotifications(nil, runner)
+		}
 		return nil
 	}
 
-	killed := killer.FindAndKillApps(activeApps, dryRun, verbose, runner, killer.DefaultKillGracePeriod)
+	killed, appsThatIgnoredTheirKill := killer.FindAndKillApps(activeApps, dryRun, verbose, runner, killer.DefaultKillGracePeriod)
 	if verbose || dryRun {
 		action := "Killed"
 		if dryRun {
@@ -149,5 +157,56 @@ func executeRun(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "%s %d process(es)\n", action, killed)
 	}
 
+	if !dryRun {
+		reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill, runner)
+	}
+
 	return nil
+}
+
+// reconcileIgnoredKillNotifications raises a notification for apps that are
+// ignoring their kill and have not been reported yet, then records the current set
+// so a long refusal produces one notification rather than one every two minutes.
+//
+// Every failure in here is logged and swallowed rather than returned. The run's job
+// is to keep trying to close the apps, and a notification that could not be raised
+// is no reason to stop doing that — but it is every reason to say so.
+func reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill []*config.App, runner notify.CommandRunner) {
+	ignoredAppNames := make([]string, 0, len(appsThatIgnoredTheirKill))
+	for _, app := range appsThatIgnoredTheirKill {
+		ignoredAppNames = append(ignoredAppNames, app.Name)
+	}
+
+	stateFilePath := getIgnoredKillStateFilePath()
+
+	state, err := notify.Load(stateFilePath)
+	if err != nil {
+		// Reported, then treated as nothing-reported-yet: a damaged state file
+		// should cost a duplicate notification, never a missed one.
+		log.Printf("Warning: %v", err)
+	}
+
+	if appNames := notify.AppNamesNeedingNotification(state, ignoredAppNames); len(appNames) > 0 {
+		if err := notify.Send(runner, appNames); err != nil {
+			log.Printf("Warning: %v", err)
+		}
+	}
+
+	newState := notify.StateAfterRun(ignoredAppNames)
+	if state != nil && slices.Equal(state.ReportedAppNames, newState.ReportedAppNames) {
+		// Nothing changed, and this runs every two minutes: rewriting an identical
+		// file 720 times a day earns nothing.
+		return
+	}
+	if state == nil && len(newState.ReportedAppNames) == 0 {
+		return
+	}
+
+	if err := notify.Save(stateFilePath, newState); err != nil {
+		log.Printf("Warning: %v", err)
+	}
+}
+
+func getIgnoredKillStateFilePath() string {
+	return filepath.Join(xdg.StateHome, "yappblocker", "ignored-kills.json")
 }
