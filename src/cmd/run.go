@@ -140,7 +140,7 @@ func executeRun(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	killed := killer.FindAndKillApps(activeApps, dryRun, verbose, runner)
+	killed := killer.FindAndKillApps(activeApps, dryRun, verbose, runner, killer.DefaultKillGracePeriod)
 	if verbose || dryRun {
 		action := "Killed"
 		if dryRun {
