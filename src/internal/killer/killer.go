@@ -131,18 +131,69 @@ func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gr
 
 	var stillRunning []*config.App
 	for _, app := range apps {
-		survivingPIDs := findPIDs(app, runner)
-		if len(survivingPIDs) == 0 {
+		survival := describeSurvival(app, runner)
+		if survival == "" {
 			continue
 		}
 		log.Printf(
-			"Warning: kill of %q (%s) reported success but %d process(es) are still running %v later — the app is ignoring it",
-			app.Match, app.Name, len(survivingPIDs), gracePeriod,
+			"Warning: kill of %q (%s) reported success but %s %v later — the app is ignoring it",
+			app.Match, app.Name, survival, gracePeriod,
 		)
 		stillRunning = append(stillRunning, app)
 	}
 
 	return stillRunning
+}
+
+// describeSurvival says how the app is still present after its kill, or returns the
+// empty string when it is gone.
+//
+// The question asked has to match the level the kill acted on. An osascript quit is
+// sent to the *application*, so whether it worked is an application-level question;
+// asking the process table instead reports a false failure for every app that
+// leaves helper or XPC processes behind, which the system relaunches on demand and
+// which no application-level quit ever touches. Measured on 2026-11-07, that was
+// four of six apps in one night — Messages, Safari, Steam and the Claude desktop
+// app were all reported as refusing kills they had in fact obeyed, leaving only
+// `MessagesBlastDoorSupport`, `SafariPlatformSupport`, `Steam.../ipcserver` and a
+// `chrome-native-host` behind. A pkill signals processes, so for those kill types
+// the process table is the right place to look.
+func describeSurvival(app *config.App, runner CommandRunner) string {
+	if app.KillType == config.KillTypeOsascript {
+		if isApplicationRunning(app, runner) {
+			return "the application is still running"
+		}
+		return ""
+	}
+
+	survivingPIDs := findPIDs(app, runner)
+	if len(survivingPIDs) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("%d process(es) are still running", len(survivingPIDs))
+}
+
+// isApplicationRunning asks LaunchServices whether the application is up, rather
+// than inspecting processes. Note where the answer lives: this exits 0 whether the
+// answer is true or false and puts it on stdout, which is the same trap that hid
+// the original failure — an exit code is not an answer.
+//
+// An unanswerable check is reported and then treated as "not running", so a broken
+// check cannot manufacture a failure. It is deliberately not silent about that: a
+// check nobody can trust and a check nobody hears are both useless, so the line is
+// logged either way.
+func isApplicationRunning(app *config.App, runner CommandRunner) bool {
+	stdout, err := runner.Run([]string{"osascript", "-e", fmt.Sprintf("application %q is running", app.Match)})
+	if err != nil {
+		log.Printf(
+			"Warning: could not tell whether %q (%s) is still running, so its kill is not being called a failure: %v%s",
+			app.Match, app.Name, err, formatOutputForLog(stdout),
+		)
+		return false
+	}
+
+	return strings.TrimSpace(stdout) == "true"
 }
 
 // formatOutputForLog renders a command's output as a suffix for a log line,

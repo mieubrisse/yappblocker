@@ -2,6 +2,7 @@ package killer
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"strings"
 	"testing"
@@ -18,8 +19,14 @@ type mockRunner struct {
 	commands     [][]string
 	pgrepResults map[string]string // bracketed match pattern -> stdout
 	// pgrepResultsAfterKill overrides pgrepResults once a kill has been sent, which
-	// is how a test says whether the app actually died.
+	// is how a test says whether the app's processes actually went away.
 	pgrepResultsAfterKill map[string]string
+	// isRunningAnswer is what LaunchServices reports for `application "X" is
+	// running`. Empty behaves like "false", which is the ordinary case of an app
+	// that obeyed its quit.
+	isRunningAnswer string
+	// isRunningError makes that check unanswerable.
+	isRunningError error
 	// killOutput and killError are what a kill command reports back.
 	killOutput string
 	killError  error
@@ -43,6 +50,12 @@ func (m *mockRunner) Run(args []string) (string, error) {
 			return stdout, nil
 		}
 		return "", &ExitError{Code: 1}
+	}
+
+	// The survival check is also an osascript call, so it must not be mistaken for
+	// a kill.
+	if len(args) >= 3 && args[0] == "osascript" && strings.Contains(args[2], "is running") {
+		return m.isRunningAnswer, m.isRunningError
 	}
 
 	m.killHasBeenSent = true
@@ -118,9 +131,7 @@ func TestKillOsascript(t *testing.T) {
 		pgrepResults: map[string]string{
 			"[M]yApp": "789\n",
 		},
-		pgrepResultsAfterKill: map[string]string{
-			"[M]yApp": "",
-		},
+		isRunningAnswer: "false\n",
 	}
 	apps := []*config.App{
 		{Name: "myapp", Match: "MyApp", KillType: config.KillTypeOsascript},
@@ -212,21 +223,24 @@ func TestNoMatchingProcesses(t *testing.T) {
 	}
 }
 
-// TestKillReportedAsSuccessfulButIgnoredIsLogged covers the defect that let a
-// blocking window pass with every app still running and an empty log: osascript's
-// "quit app" exits 0 even when the app ignores it.
-func TestKillReportedAsSuccessfulButIgnoredIsLogged(t *testing.T) {
+// TestSurvivingHelperProcessesAreNotAFailedQuit is the regression test for the
+// false alarms shipped in v0.4.1. Messages, Safari, Steam and the Claude desktop
+// app all obeyed their quits while leaving XPC or helper processes behind, and all
+// four were reported as refusing.
+func TestSurvivingHelperProcessesAreNotAFailedQuit(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"[S]tubbornApp": "4242\n",
+			"[M]essages": "100\n",
 		},
-		// Still running after the kill, and the kill itself reported success.
+		// The helper process outlives the quit, as an XPC service does.
 		pgrepResultsAfterKill: map[string]string{
-			"[S]tubbornApp": "4242\n",
+			"[M]essages": "101\n",
 		},
+		// But the application itself is gone, which is what the quit acted on.
+		isRunningAnswer: "false\n",
 	}
 	apps := []*config.App{
-		{Name: "stubborn", Match: "StubbornApp", KillType: config.KillTypeOsascript},
+		{Name: "messages", Match: "Messages", KillType: config.KillTypeOsascript},
 	}
 
 	var ignored []*config.App
@@ -234,33 +248,93 @@ func TestKillReportedAsSuccessfulButIgnoredIsLogged(t *testing.T) {
 		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 	})
 
-	if !strings.Contains(logged, "StubbornApp") || !strings.Contains(logged, "still running") {
-		t.Errorf("expected a warning that the app is still running, got log output: %q", logged)
+	if logged != "" {
+		t.Errorf("expected no warning when only helper processes survive, got: %q", logged)
 	}
-	if len(ignored) != 1 || ignored[0].Name != "stubborn" {
-		t.Errorf("expected the ignoring app returned for the caller to notify about, got %v", ignored)
+	if len(ignored) != 0 {
+		t.Errorf("expected nothing reported to the caller, got %v", ignored)
 	}
 }
 
-func TestKillThatWorksIsNotLogged(t *testing.T) {
+func TestOsascriptQuitThatIsIgnoredIsStillReported(t *testing.T) {
 	runner := &mockRunner{
 		pgrepResults: map[string]string{
-			"[O]bedientApp": "4242\n",
+			"[G]oogle Chrome": "66775\n",
+		},
+		isRunningAnswer: "true\n",
+	}
+	apps := []*config.App{
+		{Name: "chrome", Match: "Google Chrome", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if !strings.Contains(logged, "Google Chrome") || !strings.Contains(logged, "the application is still running") {
+		t.Errorf("expected a warning that the application is still running, got: %q", logged)
+	}
+	if len(ignored) != 1 || ignored[0].Name != "chrome" {
+		t.Errorf("expected the refusing app returned for the caller to notify about, got %v", ignored)
+	}
+}
+
+// TestPkillSurvivorsAreStillCheckedAgainstProcesses keeps the process-level path
+// honest: a pkill signals processes, so surviving processes are a real failure
+// there. Chrome PWAs such as the gmail entry have no application identity and rely
+// on this path.
+func TestPkillSurvivorsAreStillCheckedAgainstProcesses(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults: map[string]string{
+			"[G]mail.app": "900\n",
 		},
 		pgrepResultsAfterKill: map[string]string{
-			"[O]bedientApp": "",
+			"[G]mail.app": "900\n901\n",
 		},
 	}
 	apps := []*config.App{
-		{Name: "obedient", Match: "ObedientApp", KillType: config.KillTypeOsascript},
+		{Name: "gmail", Match: "Gmail.app", KillType: config.KillTypePkillGraceful},
 	}
 
+	var ignored []*config.App
 	logged := captureLogOutput(t, func() {
-		FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
 	})
 
-	if logged != "" {
-		t.Errorf("expected no log output for a kill that worked, got: %q", logged)
+	if !strings.Contains(logged, "2 process(es) are still running") {
+		t.Errorf("expected a process-level warning, got: %q", logged)
+	}
+	if len(ignored) != 1 {
+		t.Errorf("expected the app reported, got %v", ignored)
+	}
+}
+
+// TestUnanswerableSurvivalCheckIsLoggedWithoutManufacturingAFailure covers the
+// middle case: a check that cannot be answered must neither pass silently nor
+// invent a failure.
+func TestUnanswerableSurvivalCheckIsLoggedWithoutManufacturingAFailure(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults: map[string]string{
+			"[O]ddApp": "500\n",
+		},
+		isRunningAnswer: "execution error: something broke\n",
+		isRunningError:  &ExitError{Code: 1},
+	}
+	apps := []*config.App{
+		{Name: "odd", Match: "OddApp", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if !strings.Contains(logged, "could not tell whether") || !strings.Contains(logged, "something broke") {
+		t.Errorf("expected the unanswerable check logged with its own output, got: %q", logged)
+	}
+	if len(ignored) != 0 {
+		t.Errorf("expected no manufactured failure, got %v", ignored)
 	}
 }
 
@@ -273,7 +347,7 @@ func TestFailedKillLogsTheCommandOutput(t *testing.T) {
 			"[A]ngryApp": "999\n",
 		},
 		killOutput: "execution error: Not authorized to send Apple events to AngryApp. (-1743)\n",
-		killError:  &ExitError{Code: 1},
+		killError:  errors.New("exit code 1"),
 	}
 	apps := []*config.App{
 		{Name: "angry", Match: "AngryApp", KillType: config.KillTypeOsascript},
