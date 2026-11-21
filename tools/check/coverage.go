@@ -24,10 +24,8 @@ var (
 	// and code-generation packages that are not meaningfully unit-testable belong here.
 	coverageExcludedPackagePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`github.com/mieubrisse/yappblocker$`),
-		regexp.MustCompile(`/cmd$`),
 		regexp.MustCompile(`/cmd/version$`),
 		regexp.MustCompile(`/internal/buildinfo$`),
-		regexp.MustCompile(`/internal/launchd$`),
 	}
 
 	coveragePercentPattern = regexp.MustCompile(`([0-9]+\.[0-9]+)%`)

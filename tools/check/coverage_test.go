@@ -8,7 +8,7 @@ import (
 func TestFindCoverageFailures(t *testing.T) {
 	testOutput := `ok  	github.com/mieubrisse/yappblocker/internal/config	0.412s	coverage: 85.3% of statements
 ok  	github.com/mieubrisse/yappblocker/internal/killer	(cached)	coverage: 41.0% of statements
-	github.com/mieubrisse/yappblocker/cmd		coverage: 0.0% of statements
+	github.com/mieubrisse/yappblocker/cmd/version		coverage: 0.0% of statements
 	github.com/mieubrisse/yappblocker		coverage: 0.0% of statements
 ?   	github.com/mieubrisse/yappblocker/internal/notify	[no test files]
 ok  	github.com/mieubrisse/yappblocker/internal/schedule	0.2s	coverage: 60.0% of statements
@@ -33,9 +33,9 @@ func TestCheckCoveragePassesWhenEveryPackageClearsTheThreshold(t *testing.T) {
 
 func TestIsExcludedFromCoverageMatchesWholePathSuffixes(t *testing.T) {
 	cases := map[string]bool{
-		"github.com/mieubrisse/yappblocker/cmd":             true,
-		"github.com/mieubrisse/yappblocker/cmd/other":       false,
-		"github.com/mieubrisse/yappblocker/internal/config": false,
+		"github.com/mieubrisse/yappblocker/cmd/version":       true,
+		"github.com/mieubrisse/yappblocker/cmd/version/other": false,
+		"github.com/mieubrisse/yappblocker/cmd":               false,
 	}
 	for packagePath, want := range cases {
 		if got := isExcludedFromCoverage(packagePath); got != want {

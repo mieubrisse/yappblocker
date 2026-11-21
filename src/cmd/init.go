@@ -20,8 +20,14 @@ func init() {
 }
 
 func executeInit(cmd *cobra.Command, args []string) error {
-	configFilePath := getConfigFilePath()
+	agent, binaryFilePath, err := getUserAgentAndBinary()
+	if err != nil {
+		return err
+	}
+	return runInit(getUserFilePaths().configFilePath, agent, binaryFilePath)
+}
 
+func runInit(configFilePath string, agent *launchd.Agent, binaryFilePath string) error {
 	// Step 1: Create config file
 	fmt.Fprintln(os.Stderr, "✅ Step 1/2: Config file")
 	if err := ensureConfigExists(configFilePath); err != nil {
@@ -34,7 +40,7 @@ func executeInit(cmd *cobra.Command, args []string) error {
 	// Step 2: Install launchd agent
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "✅ Step 2/2: Launchd agent")
-	if err := launchd.Install(); err != nil {
+	if err := agent.Install(binaryFilePath, os.Stderr); err != nil {
 		return err
 	}
 

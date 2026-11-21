@@ -3,12 +3,14 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/mieubrisse/stacktrace"
 	"github.com/mieubrisse/yappblocker/internal/confirm"
+	"github.com/mieubrisse/yappblocker/internal/killer"
 	"github.com/mieubrisse/yappblocker/internal/launchd"
 	"github.com/mieubrisse/yappblocker/internal/schedule"
 	"github.com/spf13/cobra"
@@ -37,15 +39,15 @@ func executeUninstall(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runUninstall(time.Now)
+	err := runUninstall(time.Now, getUserFilePaths().configFilePath)
 	if err != nil && !errors.Is(err, errUninstallRefused) {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
 	return err
 }
 
-func runUninstall(nowFunc func() time.Time) error {
-	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr); err != nil {
+func runUninstall(nowFunc func() time.Time, configFilePath string) error {
+	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr, configFilePath); err != nil {
 		return err
 	}
 
@@ -56,19 +58,21 @@ func runUninstall(nowFunc func() time.Time) error {
 	// Checked again on the far side of the phrase: typing it takes at least 40
 	// seconds, and a window that opened in the meantime has to be honoured. Being
 	// mid-phrase at 20:00 is exactly the moment this guard is for.
-	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr); err != nil {
+	if err := requireNoBlockingWindowOpen(nowFunc(), os.Stderr, configFilePath); err != nil {
 		return err
 	}
 
-	return launchd.Uninstall()
+	agent, err := launchd.NewUserAgent(&killer.RealRunner{})
+	if err != nil {
+		return err
+	}
+	return agent.Uninstall(os.Stderr)
 }
 
 // requireNoBlockingWindowOpen refuses the uninstall while apps are actively being
 // blocked. The impulse to uninstall arrives mid-window, so making the user wait for
 // the window to close defeats it far more reliably than any amount of typing does.
-func requireNoBlockingWindowOpen(now time.Time, out *os.File) error {
-	configFilePath := getConfigFilePath()
-
+func requireNoBlockingWindowOpen(now time.Time, out io.Writer, configFilePath string) error {
 	// No config means no schedules, so nothing can be blocked and this is just
 	// leftover cleanup.
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/mieubrisse/stacktrace"
 	"github.com/mieubrisse/yappblocker/internal/config"
 	"github.com/mieubrisse/yappblocker/internal/killer"
@@ -33,10 +32,6 @@ func init() {
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be killed without killing")
 	runCmd.Flags().BoolVar(&verbose, "verbose", false, "print detailed output")
 	rootCmd.AddCommand(runCmd)
-}
-
-func getConfigFilePath() string {
-	return filepath.Join(xdg.ConfigHome, "yappblocker", "config.yaml")
 }
 
 func ensureConfigExists(configFilePath string) error {
@@ -84,12 +79,14 @@ func loadConfigFile(configFilePath string) (*config.Config, error) {
 }
 
 func executeRun(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfigFile(getConfigFilePath())
+	return runBlocking(getUserFilePaths(), &killer.RealRunner{}, killer.DefaultKillGracePeriod, time.Now(), dryRun, verbose)
+}
+
+func runBlocking(paths *filePaths, runner killer.CommandRunner, killGracePeriod time.Duration, now time.Time, isDryRun bool, isVerbose bool) error {
+	cfg, err := loadConfigFile(paths.configFilePath)
 	if err != nil {
 		return err
 	}
-
-	now := time.Now()
 
 	// Said unconditionally, not just when verbose: launchd runs this bare every two
 	// minutes and its output is the log that answers "why didn't that app close?".
@@ -100,12 +97,10 @@ func executeRun(cmd *cobra.Command, args []string) error {
 	// old it is. The first version of this printed bare, and five such lines from a
 	// ten-minute pause went on reading as "blocking is off right now" for the six
 	// days after that pause had expired.
-	if isBlockingPaused(now, os.Stderr) {
+	if isBlockingPaused(now, os.Stderr, paths.pauseStateFilePath) {
 		log.Println("Blocking is paused — killing nothing")
 		return nil
 	}
-
-	runner := &killer.RealRunner{}
 
 	var activeApps []*config.App
 	seenApps := make(map[string]bool)
@@ -117,7 +112,7 @@ func executeRun(cmd *cobra.Command, args []string) error {
 				if resolveErr != nil {
 					return resolveErr
 				}
-				if verbose {
+				if isVerbose {
 					names := make([]string, 0, len(resolved))
 					for _, a := range resolved {
 						names = append(names, a.Name)
@@ -136,29 +131,29 @@ func executeRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(activeApps) == 0 {
-		if verbose {
+		if isVerbose {
 			fmt.Fprintln(os.Stderr, "No active schedules")
 		}
 		// Still reconciled, so that an episode recorded while a window was open is
 		// forgotten once it closes and the next window's first refusal is reported
 		// rather than suppressed as old news.
-		if !dryRun {
-			reconcileIgnoredKillNotifications(nil, runner)
+		if !isDryRun {
+			reconcileIgnoredKillNotifications(nil, runner, paths.ignoredKillStateFilePath)
 		}
 		return nil
 	}
 
-	killed, appsThatIgnoredTheirKill := killer.FindAndKillApps(activeApps, dryRun, verbose, runner, killer.DefaultKillGracePeriod)
-	if verbose || dryRun {
+	killed, appsThatIgnoredTheirKill := killer.FindAndKillApps(activeApps, isDryRun, isVerbose, runner, killGracePeriod)
+	if isVerbose || isDryRun {
 		action := "Killed"
-		if dryRun {
+		if isDryRun {
 			action = "Would kill"
 		}
 		fmt.Fprintf(os.Stderr, "%s %d process(es)\n", action, killed)
 	}
 
-	if !dryRun {
-		reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill, runner)
+	if !isDryRun {
+		reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill, runner, paths.ignoredKillStateFilePath)
 	}
 
 	return nil
@@ -171,13 +166,11 @@ func executeRun(cmd *cobra.Command, args []string) error {
 // Every failure in here is logged and swallowed rather than returned. The run's job
 // is to keep trying to close the apps, and a notification that could not be raised
 // is no reason to stop doing that — but it is every reason to say so.
-func reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill []*config.App, runner notify.CommandRunner) {
+func reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill []*config.App, runner notify.CommandRunner, stateFilePath string) {
 	ignoredAppNames := make([]string, 0, len(appsThatIgnoredTheirKill))
 	for _, app := range appsThatIgnoredTheirKill {
 		ignoredAppNames = append(ignoredAppNames, app.Name)
 	}
-
-	stateFilePath := getIgnoredKillStateFilePath()
 
 	state, err := notify.Load(stateFilePath)
 	if err != nil {
@@ -205,8 +198,4 @@ func reconcileIgnoredKillNotifications(appsThatIgnoredTheirKill []*config.App, r
 	if err := notify.Save(stateFilePath, newState); err != nil {
 		log.Printf("Warning: %v", err)
 	}
-}
-
-func getIgnoredKillStateFilePath() string {
-	return filepath.Join(xdg.StateHome, "yappblocker", "ignored-kills.json")
 }
