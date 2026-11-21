@@ -6,7 +6,7 @@ A Go CLI that kills distracting macOS apps on a schedule. This file is the repo'
 Where Work Is Tracked
 ---------------------
 
-Work is tracked in **Linear**, workspace [Kevin Today](https://linear.app/todayendeavors), team Autowork Factory (issue ids `KEV-N`). Issues that change this repo carry the `yappblocker` label, and the work to make the repo agent-ready lives in the project [Make yappblocker agent-ready](https://linear.app/todayendeavors/project/make-yappblocker-agent-ready-85bfbf5c92e0). Nothing is tracked inside the repo: no issue database, no TODO files. Work you discover but were not asked to do goes to Linear as a new issue.
+Work is tracked in **Linear**, workspace [Kevin Today](https://linear.app/todayendeavors), team Autowork Factory (issue ids `KEV-N`). This repo's issues are found two ways, and a search needs both: the `yappblocker` label, and the project [Make yappblocker agent-ready](https://linear.app/todayendeavors/project/make-yappblocker-agent-ready-85bfbf5c92e0), whose issues often carry no label. Label a new issue for this repo `yappblocker`. Nothing is tracked inside the repo: no issue database, no TODO files. Work you discover but were not asked to do goes to Linear as a new issue.
 
 The repo used Beads until KEV-136 removed it. Bead ids (`yappblk-*`) in old commits resolve through the git history of `.beads/issues.jsonl`.
 
