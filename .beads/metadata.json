@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "server",
-  "dolt_database": "yappblocker",
-  "project_id": "6f3eacb7-fd91-47cb-aafb-48f206999515"
-}

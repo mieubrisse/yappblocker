@@ -1,160 +1,89 @@
-# Agent Instructions
+yappblocker
+===========
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+A Go CLI that kills distracting macOS apps on a schedule. This file is the repo's agent guidance: the non-obvious context, commands and workflow rules that reading the code will not give you. `CLAUDE.md` is a symlink to it, so there is one file to keep current.
 
-## Quick Reference
+Where Work Is Tracked
+---------------------
+
+Work is tracked in **Linear**, workspace [Kevin Today](https://linear.app/todayendeavors), team Autowork Factory (issue ids `KEV-N`). This repo's issues are found two ways, and a search needs both: the `yappblocker` label, and the project [Make yappblocker agent-ready](https://linear.app/todayendeavors/project/make-yappblocker-agent-ready-85bfbf5c92e0), whose issues often carry no label. Label a new issue for this repo `yappblocker`. Nothing is tracked inside the repo: no issue database, no TODO files. Work you discover but were not asked to do goes to Linear as a new issue.
+
+The repo used Beads until KEV-136 removed it. Bead ids (`yappblk-*`) in old commits resolve through the git history of `.beads/issues.jsonl`.
+
+How a Change Lands
+------------------
+
+Every change reaches `main` through a pull request. Never push to `main` directly, never force-push, and never skip the hooks with `--no-verify`.
+
+1. Branch off `main`. Parallel work goes in its own git worktree; the build and hooks work from one.
+2. Run `make check` and get it green before pushing.
+3. Open a pull request against `main` that names the Linear issue it closes.
+4. CI (`.github/workflows/ci.yml`) runs `make check` on the pull request and must be green. The CI retry budget is **two rounds**: if CI is still red after a second push of fixes, stop and write what is failing on the Linear issue rather than pushing more attempts.
+5. Before merging, have a reviewer with fresh context (not the agent that wrote the change) read the diff.
+6. Merge only with CI green and the review passed. If the task you were given does not say you may merge, stop at a green pull request and say so on the Linear issue.
+
+No ruleset protects `main` yet, so these rules are the gate until [KEV-135](https://linear.app/todayendeavors/issue/KEV-135) adds one; do not treat a push that GitHub accepts as permission.
+
+Merging does not ship anything. Releases come from pushing a `v*` tag, which runs goreleaser (`.github/workflows/release.yml`) and publishes binaries and the Homebrew formula. Tagging is a separate, deliberate step: do not tag as part of landing a change.
+
+Commands
+--------
+
+Always build through the Makefile: it injects the version string via ldflags from git state. A bare `go build` produces a binary that reports version "dev".
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd dolt push          # Push beads data to remote
+make setup      # One-time per clone: points core.hooksPath at .githooks/
+make check      # The full check CI runs: modules → formatting → vet → lint → govulncheck → deadcode → tests (-race) → coverage
+make build      # setup → check → compile
+make compile    # Build the binary only, into _build/ (skips checks)
+make run        # Build and run; pass arguments via ARGS="..."
+make test       # Tests only (-race)
+make fmt        # Auto-format code
+make clean      # Remove _build/
 ```
 
-## Non-Interactive Shell Commands
+`make check` needs `golangci-lint`, `govulncheck` and `deadcode` on `PATH`, and the network for `govulncheck`. The pre-commit hook runs it, but only in a clone where `make setup` has run; a worktree inherits its clone's setting.
 
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+The sandbox is configured to allow writes to the Go build cache, so `make build`, `make check` and `make test` work without disabling it.
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+Project Structure
+-----------------
 
-**Use these forms instead:**
+```
+src/                    Go source code (module: github.com/mieubrisse/yappblocker)
+  cmd/                  Cobra commands
+  internal/             Internal packages (config, schedule, killer, launchd, pause, notify, confirm, buildinfo)
+  main.go               Entry point — calls cmd.Execute()
+_build/                 Build output (gitignored)
+docs/plans/             Original design and implementation plans
+.githooks/              Git hooks (wired by make setup)
+.claude/                Claude Code settings
+.github/workflows/      CI and release automation
+```
+
+All Go code lives under `src/`, and `go.mod` is there, so run Go commands from `src/` (or use the Makefile, which does).
+
+Each subcommand is a file in package `cmd` that defines its `*cobra.Command` and registers it on `rootCmd` with `AddCommand()` in `init()`. `version` is the one subcommand in its own package (`cmd/version/`), exporting `CmdStr` and `Cmd`.
+
+Dependencies
+------------
+
+Add library dependencies with `go get` (not `go install`, which is for CLI tools), then run `go mod tidy`; `make check` fails on an untidy module.
+
 ```bash
-# Force overwrite without prompting
+cd src && go get github.com/some/library@latest
+```
+
+Non-Interactive Shell Commands
+------------------------------
+
+**Always use non-interactive flags** with file operations to avoid hanging on confirmation prompts. Commands like `cp`, `mv` and `rm` may be aliased to `-i` on some systems, which hangs an agent waiting for y/n input.
+
+```bash
 cp -f source dest           # NOT: cp source dest
 mv -f source dest           # NOT: mv source dest
 rm -f file                  # NOT: rm file
-
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
 cp -rf source dest          # NOT: cp -r source dest
 ```
 
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:full hash:f65d5d33 -->
-## Issue Tracking with bd (beads)
-
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
-
-### Why bd?
-
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Dolt-powered version control with native sync
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
-
-### Quick Start
-
-**Check for ready work:**
-
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-
-```bash
-bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-
-```bash
-bd update <id> --claim --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task atomically**: `bd update <id> --claim`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-
-### Quality
-- Use `--acceptance` and `--design` fields when creating issues
-- Use `--validate` to check description completeness
-
-### Lifecycle
-- `bd defer <id>` / `bd supersede <id>` for issue management
-- `bd stale` / `bd orphans` / `bd lint` for hygiene
-- `bd human <id>` to flag for human decisions
-- `bd formula list` / `bd mol pour <name>` for structured workflows
-
-### Auto-Sync
-
-bd automatically syncs via Dolt:
-
-- Each write auto-commits to Dolt history
-- Use `bd dolt push`/`bd dolt pull` for remote sync
-- No manual export/import needed!
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-
-For more details, see README.md and docs/QUICKSTART.md.
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
+Other commands that may prompt: `scp` and `ssh` (use `-o BatchMode=yes`), `apt-get` (use `-y`), `brew` (set `HOMEBREW_NO_AUTO_UPDATE=1`).

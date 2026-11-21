@@ -10,7 +10,6 @@
             "Bash(make:*)",
             "Bash(gofmt:*)",
             "Bash(golangci-lint:*)",
-            "Bash(bd:*)",
             "Bash(goreleaser:*)",
             "Bash(gh:*)",
             "Bash(govulncheck:*)",
@@ -22,13 +21,7 @@
             "Read(./secrets/**)",
             "Bash(rm -rf:*)",
             "Bash(sudo:*)",
-            "Bash(git commit --no-verify:*)",
-            "Bash(bd reset:*)",
-            "Bash(bd delete:*)",
-            "Bash(bd admin cleanup:*)",
-            "Bash(bd admin compact:*)",
-            "Bash(bd purge:*)",
-            "Bash(bd gc:*)"
+            "Bash(git commit --no-verify:*)"
         ]
     },
     "sandbox": {
@@ -38,29 +31,5 @@
         "network": {
             "allowedHosts": ["vuln.go.dev"]
         }
-    },
-    "hooks": {
-        "SessionStart": [
-            {
-                "matcher": "",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "bd prime"
-                    }
-                ]
-            }
-        ],
-        "PreCompact": [
-            {
-                "matcher": "",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "bd prime"
-                    }
-                ]
-            }
-        ]
     }
 }
