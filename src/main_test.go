@@ -66,7 +66,8 @@ func buildBinaryAndRunTests(m *testing.M) int {
 	}()
 
 	binaryFilePath = filepath.Join(buildDirPath, "yappblocker")
-	buildOutput, err := exec.Command("go", "build", "-o", binaryFilePath, ".").CombinedOutput()
+	// No VCS stamping, so the build does not shell out to git against the checkout.
+	buildOutput, err := exec.Command("go", "build", "-buildvcs=false", "-o", binaryFilePath, ".").CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not build yappblocker for the subprocess tests: %v\n%s\n", err, buildOutput)
 		return 1
