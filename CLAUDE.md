@@ -77,7 +77,7 @@ make run
 make run ARGS="version"
 ```
 
-The sandbox is configured to allow writes to the Go build cache, so `make build`, `make check`, and `make test` work without disabling the sandbox.
+The sandbox is configured to allow writes to the Go build cache. On a machine where `make build`, `make check` or `make test` has not run before, any of them may first download the pinned toolchain and modules from `proxy.golang.org`, which the sandbox does not yet allow: run that first one outside the sandbox.
 
 Dependencies
 ------------

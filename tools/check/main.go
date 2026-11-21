@@ -38,6 +38,15 @@ const (
 	// goToolchainEnvVar is the environment variable that makes the go command run one exact
 	// toolchain; the go.mod `toolchain` directive alone is only a suggestion.
 	goToolchainEnvVar = "GOTOOLCHAIN"
+
+	// goWorkEnvVar is set to off so a go.work file above the repo cannot change module resolution.
+	goWorkEnvVar = "GOWORK"
+)
+
+var (
+	// verdictAffectingEnvVars are go settings from the caller's shell that would change what the
+	// check builds or tests, and so make its verdict differ from CI's. The runner clears them.
+	verdictAffectingEnvVars = []string{"GOFLAGS", "GOOS", "GOARCH", "GOEXPERIMENT"}
 )
 
 func main() {
@@ -58,6 +67,10 @@ func run() error {
 	}
 	repoRootDirPath := filepath.Dir(toolsDirPath)
 	srcDirPath := filepath.Join(repoRootDirPath, srcDirName)
+
+	if err := clearVerdictAffectingEnv(); err != nil {
+		return stacktrace.Propagate(err, "An error occurred clearing the go settings that would make this run differ from CI")
+	}
 
 	pinnedGoVersion, err := readPinnedGoVersion(srcDirPath)
 	if err != nil {
@@ -172,6 +185,18 @@ func reexecUnderPinnedToolchain(toolsDirPath string, pinnedGoVersion string) (in
 	return 0, nil
 }
 
+func clearVerdictAffectingEnv() error {
+	for _, envVar := range verdictAffectingEnvVars {
+		if err := os.Unsetenv(envVar); err != nil {
+			return stacktrace.Propagate(err, "An error occurred unsetting '%v'", envVar)
+		}
+	}
+	if err := os.Setenv(goWorkEnvVar, "off"); err != nil {
+		return stacktrace.Propagate(err, "An error occurred setting '%v' to 'off'", goWorkEnvVar)
+	}
+	return nil
+}
+
 func checkFormatting(moduleDirPaths []string) error {
 	goRootDirPath, err := outputIn(".", "go", "env", "GOROOT")
 	if err != nil {
@@ -217,13 +242,16 @@ func runIn(dirPath string, name string, args ...string) error {
 	return runInTee(dirPath, io.Discard, name, args...)
 }
 
-// runInTee runs a command with its output on this process's stdout and stderr, and also copies
-// its combined output into extraOutput.
+// runInTee runs a command with its combined output on this process's stdout, and also copies it
+// into extraOutput.
 func runInTee(dirPath string, extraOutput io.Writer, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dirPath
-	cmd.Stdout = io.MultiWriter(os.Stdout, extraOutput)
-	cmd.Stderr = io.MultiWriter(os.Stderr, extraOutput)
+	// One writer for both streams: exec serializes writes only when Stdout and Stderr are the same
+	// value, so two writers would race on extraOutput.
+	combinedOutput := io.MultiWriter(os.Stdout, extraOutput)
+	cmd.Stdout = combinedOutput
+	cmd.Stderr = combinedOutput
 	if err := cmd.Run(); err != nil {
 		return stacktrace.Propagate(err, "An error occurred running '%v' with args '%v' in '%v'", name, args, dirPath)
 	}
