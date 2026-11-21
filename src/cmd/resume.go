@@ -30,16 +30,14 @@ func executeResume(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runResume(time.Now(), os.Stderr)
+	err := runResume(time.Now(), os.Stderr, getUserFilePaths().pauseStateFilePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
 	return err
 }
 
-func runResume(now time.Time, out io.Writer) error {
-	stateFilePath := getPauseStateFilePath()
-
+func runResume(now time.Time, out io.Writer, stateFilePath string) error {
 	state, err := pause.Load(stateFilePath)
 	if err != nil {
 		return stacktrace.Propagate(err, "could not read the pause state at %s", stateFilePath)

@@ -31,15 +31,15 @@ func executeTest(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runTest(args[0])
+	err := runTest(args[0], getUserFilePaths(), time.Now())
 	if err != nil && !errors.Is(err, errScheduleActive) {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
 	return err
 }
 
-func runTest(scheduleName string) error {
-	cfg, err := loadConfigFile(getConfigFilePath())
+func runTest(scheduleName string, paths *filePaths, now time.Time) error {
+	cfg, err := loadConfigFile(paths.configFilePath)
 	if err != nil {
 		return err
 	}
@@ -49,11 +49,9 @@ func runTest(scheduleName string) error {
 		return stacktrace.NewError("unknown schedule %q", scheduleName)
 	}
 
-	now := time.Now()
-
 	// A pause suspends blocking, so everything asking this question — including the
 	// Claude Code prompt hook — should see the schedule as inactive while one runs.
-	if isBlockingPaused(now, os.Stderr) {
+	if isBlockingPaused(now, os.Stderr, paths.pauseStateFilePath) {
 		return nil
 	}
 

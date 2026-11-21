@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/mieubrisse/yappblocker/internal/confirm"
 	"github.com/mieubrisse/yappblocker/internal/pause"
 	"github.com/spf13/cobra"
@@ -52,7 +50,7 @@ func executePause(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
-	err := runPause(args, time.Now, os.Stderr)
+	err := runPause(args, time.Now, os.Stderr, getUserFilePaths().pauseStateFilePath)
 	if err != nil && !errors.Is(err, errPauseRefused) {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 	}
@@ -64,9 +62,8 @@ func executePause(cmd *cobra.Command, args []string) error {
 // pause has to be measured from when it was confirmed, not from when the command
 // was typed. Someone who leaves the prompt open for twenty minutes should not get a
 // pause that is twenty minutes shorter than they asked for, or one already expired.
-func runPause(args []string, nowFunc func() time.Time, out io.Writer) error {
+func runPause(args []string, nowFunc func() time.Time, out io.Writer, stateFilePath string) error {
 	now := nowFunc()
-	stateFilePath := getPauseStateFilePath()
 
 	state, err := pause.Load(stateFilePath)
 	if err != nil {
@@ -202,15 +199,11 @@ func formatDuration(duration time.Duration) string {
 	return fmt.Sprintf("%dh%dm", hours, minutes)
 }
 
-func getPauseStateFilePath() string {
-	return filepath.Join(xdg.StateHome, "yappblocker", "pause.json")
-}
-
 // isBlockingPaused reports whether a pause is in force. An unreadable state file
 // counts as "not paused" so that damaging the file cannot switch blocking off, and
 // says so rather than passing over it in silence.
-func isBlockingPaused(now time.Time, out io.Writer) bool {
-	state, err := pause.Load(getPauseStateFilePath())
+func isBlockingPaused(now time.Time, out io.Writer, stateFilePath string) bool {
+	state, err := pause.Load(stateFilePath)
 	if err != nil {
 		fmt.Fprintf(out, "Warning: the pause state could not be read, so blocking stays on: %v\n", err)
 		return false

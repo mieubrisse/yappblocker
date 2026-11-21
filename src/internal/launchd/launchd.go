@@ -1,9 +1,10 @@
 package launchd
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"text/template"
 
@@ -47,28 +48,100 @@ type plistData struct {
 	LogFilePath    string
 }
 
-func getPlistFilePath() (string, error) {
+// CommandRunner abstracts command execution for testability, so that no test has
+// to run the real launchctl against the user's live agent.
+type CommandRunner interface {
+	Run(args []string) (stdout string, err error)
+}
+
+// Agent is the launchd agent that runs yappblocker on a timer: where its plist and
+// log live, and how launchctl is reached.
+type Agent struct {
+	plistFilePath string
+	logFilePath   string
+	runner        CommandRunner
+}
+
+func NewAgent(plistFilePath string, logFilePath string, runner CommandRunner) *Agent {
+	return &Agent{
+		plistFilePath: plistFilePath,
+		logFilePath:   logFilePath,
+		runner:        runner,
+	}
+}
+
+// NewUserAgent returns the agent at its real location in the user's home.
+func NewUserAgent(runner CommandRunner) (*Agent, error) {
 	homeDirPath, err := os.UserHomeDir()
 	if err != nil {
-		return "", stacktrace.Propagate(err, "could not determine home directory")
+		return nil, stacktrace.Propagate(err, "could not determine home directory")
 	}
-	return filepath.Join(homeDirPath, "Library", "LaunchAgents", plistFileName), nil
+	plistFilePath := filepath.Join(homeDirPath, "Library", "LaunchAgents", plistFileName)
+	logFilePath := filepath.Join(xdg.StateHome, "yappblocker", "yappblocker.log")
+	return NewAgent(plistFilePath, logFilePath, runner), nil
 }
 
-func getLogFilePath() string {
-	return filepath.Join(xdg.StateHome, "yappblocker", "yappblocker.log")
-}
-
-func Install() error {
-	binaryFilePath, err := exec.LookPath("yappblocker")
-	if err != nil {
-		return stacktrace.Propagate(err, "could not find yappblocker in PATH")
-	}
-
-	logFilePath := getLogFilePath()
-	logDirPath := filepath.Dir(logFilePath)
+// Install writes the plist pointing at the given binary and loads it, replacing any
+// agent already loaded from the same path.
+func (a *Agent) Install(binaryFilePath string, out io.Writer) error {
+	logDirPath := filepath.Dir(a.logFilePath)
 	if err := os.MkdirAll(logDirPath, 0755); err != nil {
 		return stacktrace.Propagate(err, "failed to create log directory %q", logDirPath)
+	}
+
+	plistContents, err := renderPlist(binaryFilePath, a.logFilePath)
+	if err != nil {
+		return err
+	}
+
+	plistDirPath := filepath.Dir(a.plistFilePath)
+	if err := os.MkdirAll(plistDirPath, 0755); err != nil {
+		return stacktrace.Propagate(err, "failed to create LaunchAgents directory %q", plistDirPath)
+	}
+
+	// Unload existing plist if present (ignore errors)
+	if _, statErr := os.Stat(a.plistFilePath); statErr == nil {
+		_, _ = a.runner.Run([]string{"launchctl", "unload", a.plistFilePath})
+	}
+
+	if err := os.WriteFile(a.plistFilePath, plistContents, 0644); err != nil {
+		return stacktrace.Propagate(err, "failed to write plist file %q", a.plistFilePath)
+	}
+
+	if loadOutput, err := a.runner.Run([]string{"launchctl", "load", a.plistFilePath}); err != nil {
+		return stacktrace.Propagate(err, "launchctl load failed: %s", loadOutput)
+	}
+
+	fmt.Fprintf(out, "Installed launchd agent: %s\n", a.plistFilePath)
+	fmt.Fprintf(out, "yappblocker will run every %d seconds.\n", runInterval)
+	fmt.Fprintf(out, "Logs: %s\n", a.logFilePath)
+	return nil
+}
+
+// Uninstall unloads the agent and removes its plist. A missing plist is not an
+// error, since there is then nothing left to remove.
+func (a *Agent) Uninstall(out io.Writer) error {
+	if _, err := os.Stat(a.plistFilePath); os.IsNotExist(err) {
+		fmt.Fprintln(out, "No launchd agent found — nothing to uninstall.")
+		return nil
+	}
+
+	if unloadOutput, err := a.runner.Run([]string{"launchctl", "unload", a.plistFilePath}); err != nil {
+		fmt.Fprintf(out, "warning: launchctl unload failed: %s\n", unloadOutput)
+	}
+
+	if err := os.Remove(a.plistFilePath); err != nil {
+		return stacktrace.Propagate(err, "failed to remove plist file %q", a.plistFilePath)
+	}
+
+	fmt.Fprintf(out, "Uninstalled launchd agent: %s\n", a.plistFilePath)
+	return nil
+}
+
+func renderPlist(binaryFilePath string, logFilePath string) ([]byte, error) {
+	tmpl, err := template.New("plist").Parse(plistTemplate)
+	if err != nil {
+		return nil, stacktrace.Propagate(err, "failed to parse plist template")
 	}
 
 	data := plistData{
@@ -78,66 +151,9 @@ func Install() error {
 		LogFilePath:    logFilePath,
 	}
 
-	tmpl, err := template.New("plist").Parse(plistTemplate)
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to parse plist template")
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, data); err != nil {
+		return nil, stacktrace.Propagate(err, "failed to render plist for binary %q and log %q", binaryFilePath, logFilePath)
 	}
-
-	plistFilePath, err := getPlistFilePath()
-	if err != nil {
-		return err
-	}
-	plistDirPath := filepath.Dir(plistFilePath)
-	if err := os.MkdirAll(plistDirPath, 0755); err != nil {
-		return stacktrace.Propagate(err, "failed to create LaunchAgents directory")
-	}
-
-	// Unload existing plist if present (ignore errors)
-	if _, statErr := os.Stat(plistFilePath); statErr == nil {
-		exec.Command("launchctl", "unload", plistFilePath).Run()
-	}
-
-	f, err := os.Create(plistFilePath)
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to create plist file %q", plistFilePath)
-	}
-	defer f.Close()
-
-	if err := tmpl.Execute(f, data); err != nil {
-		return stacktrace.Propagate(err, "failed to write plist")
-	}
-
-	cmd := exec.Command("launchctl", "load", plistFilePath)
-	if out, loadErr := cmd.CombinedOutput(); loadErr != nil {
-		return stacktrace.Propagate(loadErr, "launchctl load failed: %s", string(out))
-	}
-
-	fmt.Fprintf(os.Stderr, "Installed launchd agent: %s\n", plistFilePath)
-	fmt.Fprintf(os.Stderr, "yappblocker will run every %d seconds.\n", runInterval)
-	fmt.Fprintf(os.Stderr, "Logs: %s\n", logFilePath)
-	return nil
-}
-
-func Uninstall() error {
-	plistFilePath, err := getPlistFilePath()
-	if err != nil {
-		return err
-	}
-
-	if _, err := os.Stat(plistFilePath); os.IsNotExist(err) {
-		fmt.Fprintln(os.Stderr, "No launchd agent found — nothing to uninstall.")
-		return nil
-	}
-
-	cmd := exec.Command("launchctl", "unload", plistFilePath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: launchctl unload failed: %s\n", string(out))
-	}
-
-	if err := os.Remove(plistFilePath); err != nil {
-		return stacktrace.Propagate(err, "failed to remove plist file %q", plistFilePath)
-	}
-
-	fmt.Fprintf(os.Stderr, "Uninstalled launchd agent: %s\n", plistFilePath)
-	return nil
+	return rendered.Bytes(), nil
 }

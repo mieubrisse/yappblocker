@@ -29,10 +29,8 @@ COVERAGE_THRESHOLD := 60
 # unit-testable belong here.
 COVERAGE_EXCLUDE_PATTERNS := \
 	github.com/mieubrisse/yappblocker$$ \
-	/cmd$$ \
 	/cmd/version$$ \
-	/internal/buildinfo$$ \
-	/internal/launchd$$
+	/internal/buildinfo$$
 
 .PHONY: build check clean compile fmt run setup test
 
