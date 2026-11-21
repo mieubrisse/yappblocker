@@ -50,13 +50,21 @@ Parent commands wire children via `init()` using `AddCommand()`.
 Building and Running
 --------------------
 
+The full check is one command, run from the repo root:
+
+```bash
+go -C tools run ./check
+```
+
+CI and the pre-commit hook run exactly this string, and it needs only `go` and `git`. It pins the Go toolchain (the `toolchain` line in `src/go.mod`) and each check tool (`tools/*.mod`) by exact version and fails on any drift, so its verdict matches CI's. Run it in a fresh environment before anything else.
+
 Always build via the Makefile — it injects the version string via ldflags from git state. Running `go build` directly produces a binary that reports version "dev".
 
 ```bash
 make build      # Full pipeline: configure hooks → check → compile
 make compile    # Build the binary only (skip checks)
 make run        # Build and run (pass args via ARGS="...")
-make check      # Modules → formatting → vet → lint → govulncheck → deadcode → tests (with -race)
+make check      # Alias for `go -C tools run ./check`
 make test       # Tests only (with -race)
 make fmt        # Auto-format code
 make clean      # Remove _build/
@@ -77,7 +85,7 @@ Dependencies
 Add library dependencies with `go get` (not `go install`, which is for CLI tools):
 
 ```bash
-cd src && go get github.com/some/library@latest
+cd src && go get github.com/some/library
 ```
 
 Run `go mod tidy` after adding or removing dependencies.
