@@ -7,5 +7,5 @@ set -euo pipefail
 # (e.g., git init in temp directories inherits the parent git context).
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 
-# Run quality checks (formatting, vet, tests)
-make check
+# Run the full check pipeline, the same command CI runs
+go -C tools run ./check

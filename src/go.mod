@@ -2,6 +2,8 @@ module github.com/mieubrisse/yappblocker
 
 go 1.26.0
 
+toolchain go1.27.4
+
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/mieubrisse/stacktrace v0.1.0

@@ -199,11 +199,20 @@ Development
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) (version specified in `src/go.mod`)
-- [GNU Make](https://www.gnu.org/software/make/)
-- [golangci-lint](https://golangci-lint.run/welcome/install/) (`brew install golangci-lint`)
-- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) (`go install golang.org/x/vuln/cmd/govulncheck@latest`)
-- [deadcode](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) (`go install golang.org/x/tools/cmd/deadcode@latest`)
+- [Go](https://go.dev/dl/) 1.21 or newer, and Git. That is all the full check needs.
+- [GNU Make](https://www.gnu.org/software/make/), only for the convenience targets below.
+
+### Running the full check
+
+From the repository root:
+
+```bash
+go -C tools run ./check
+```
+
+This is the one check command: CI and the pre-commit hook run exactly this string. It re-runs itself under the Go toolchain pinned by the `toolchain` line in `src/go.mod` (downloading it if needed), builds golangci-lint, govulncheck and deadcode at the versions pinned in `tools/*.mod`, prints every version it ran with and fails if any differs from its pin, then checks module tidiness, formatting, vet, lint, vulnerabilities, dead code, tests with the race detector, and per-package coverage.
+
+To bump a pin, edit the source of truth: `go -C src mod edit -toolchain=go1.X.Y` for Go, `go -C tools get -tool -modfile=<tool>.mod <package>@<version>` for a check tool.
 
 ### Getting started
 
@@ -215,7 +224,7 @@ cd yappblocker
 make build
 ```
 
-`make build` configures Git hooks, runs formatting and linting checks, runs the test suite, and compiles the binary. The output binary is at `_build/yappblocker`.
+`make build` configures Git hooks, runs the full check, and compiles the binary. The output binary is at `_build/yappblocker`.
 
 ### Common tasks
 
@@ -223,7 +232,7 @@ make build
 |---|---|
 | `make build` | Full pipeline: configure hooks, check, compile |
 | `make compile` | Build the binary only (skip checks) |
-| `make check` | Run formatting, vet, lint, govulncheck, deadcode, and tests |
+| `make check` | Alias for `go -C tools run ./check` |
 | `make test` | Run the test suite only |
 | `make run` | Build and run the binary (pass args via `ARGS="..."`) |
 | `make fmt` | Auto-format code |
@@ -259,6 +268,9 @@ src/                    Go source code
     launchd/            launchd agent management
     schedule/           Schedule matching
   main.go              Entry point
+tools/                  The check pipeline and its pins
+  check/                The check runner (`go -C tools run ./check`)
+  *.mod, *.sum          One modfile per check tool, pinning its exact version
 _build/                 Compiled binary (gitignored)
 .githooks/              Git hooks (activated by make setup)
 ```
