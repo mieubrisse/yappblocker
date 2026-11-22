@@ -30,6 +30,11 @@ CPU_LIMIT="4"           # what was measured with; Go sizes GOMAXPROCS to it
 PIDS_LIMIT="256"        # about 3x the sampled maximum, since sampling misses short-lived compilers
 TIME_LIMIT_SECONDS="300" # about 4x on a loaded box, and under go test's own 10-minute -timeout so this ceiling ends a hang
 
+# The warm-up has network and runs as root inside its container, so it gets ceilings of its own: the
+# check's, and a time limit generous enough for a cold module cache on a slow link
+WARM_TIME_LIMIT_SECONDS="600"
+VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS="120"
+
 # Holds the module cache and the vulnerability database, filled by the networked warm-up below and
 # mounted read-only into the check. It persists between runs by design, as a cache; the run itself
 # writes nothing to it. `docker volume rm yappblocker-check-cache` resets it.
@@ -78,15 +83,16 @@ warm_script='
 set -euo pipefail
 go -C src mod download
 # The check runs `go mod tidy -diff`, which also needs the modules that dependencies import only in
-# their own tests; `go mod download` skips those, so let tidy fetch them (it changes no file here)
-go -C src mod tidy -diff
-go -C tools mod tidy -diff
+# their own tests; `go mod download` skips those, so let tidy fetch them (it changes no file here).
+# An untidy module is for the check to report, with its fix, so tidy is not allowed to fail here
+go -C src mod tidy -diff >&2 || true
+go -C tools mod tidy -diff >&2 || true
 for modfile_filepath in tools/*.mod; do
     go -C tools mod download -modfile="$(basename "${modfile_filepath}")"
 done
-find /cache -mindepth 1 -maxdepth 1 -name "vulndb.*" -mmin +60 -exec rm -rf {} +
+find /cache -mindepth 1 -maxdepth 1 -name "vulndb.*" -mmin +60 -exec rm -rf {} + || true
 vulndb_dirpath="$(mktemp -d /cache/vulndb.XXXXXX)"
-curl --fail --silent --show-error --location "${VULN_DB_ARCHIVE_URL}" --output /tmp/vulndb.zip
+curl --fail --silent --show-error --location --max-time "${VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS}" "${VULN_DB_ARCHIVE_URL}" --output /tmp/vulndb.zip
 # The image has no unzip; its Python does, in the standard library
 python3 -m zipfile -e /tmp/vulndb.zip "${vulndb_dirpath}"
 chmod -R a+rX "${vulndb_dirpath}"
@@ -94,11 +100,14 @@ basename "${vulndb_dirpath}"
 '
 vulndb_dirname="$(
     docker run --rm --init \
+        --memory "${MEMORY_LIMIT}" --memory-swap "${MEMORY_LIMIT}" \
+        --cpus "${CPU_LIMIT}" --pids-limit "${PIDS_LIMIT}" \
         --volume "${CACHE_VOLUME_NAME}:/cache" \
         --volume "${repo_root_dirpath}:/src:ro" --workdir /src \
         --env GOMODCACHE=/cache/gomod --env GOCACHE=/tmp/gocache --env GOFLAGS=-modcacherw \
         --env VULN_DB_ARCHIVE_URL="${VULN_DB_ARCHIVE_URL}" \
-        "${image}" bash -c "${warm_script}"
+        --env VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS="${VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS}" \
+        "${image}" timeout --signal=KILL "${WARM_TIME_LIMIT_SECONDS}" bash -c "${warm_script}"
 )"
 if [[ ! "${vulndb_dirname}" =~ ^vulndb\.[A-Za-z0-9]+$ ]]; then
     echo "ERROR: Expected the warm-up to print its vulnerability database directory's name, but it printed '${vulndb_dirname}'" >&2
@@ -112,8 +121,8 @@ check_exit_code=0
 # --read-only and --tmpfs: the only writable place is a RAM-backed /tmp that vanishes with the run;
 #   exec because go test and go run execute the binaries they build there.
 # --memory with an equal --memory-swap: a hard ceiling, with no swap to spill into.
-# --user: files the run could create carry the caller's ownership, and the repo's owner matches it,
-#   so git inside the container trusts the checkout.
+# --user: the caller's uid and primary group (not the docker group an `sg` re-run lends this shell),
+#   so anything the run could create carries the caller's ownership.
 # --cap-drop and no-new-privileges: a test needs no capability, so it gets none.
 # timeout inside the container, not around `docker run`: killing the client does not stop a
 #   container, but killing its first process ends its PID namespace, and with it every process the
@@ -124,7 +133,7 @@ docker run --rm --init \
     --memory "${MEMORY_LIMIT}" --memory-swap "${MEMORY_LIMIT}" \
     --cpus "${CPU_LIMIT}" --pids-limit "${PIDS_LIMIT}" \
     --cap-drop ALL --security-opt no-new-privileges \
-    --user "$(id -u):$(id -g)" \
+    --user "$(id -u):$(id -g "$(id -un)")" \
     --volume "${CACHE_VOLUME_NAME}:/cache:ro" \
     --volume "${repo_root_dirpath}:/src:ro" --workdir /src \
     --env HOME=/tmp/home \
@@ -134,7 +143,10 @@ docker run --rm --init \
     "${image}" timeout --signal=KILL "${TIME_LIMIT_SECONDS}" "${CHECK_COMMAND[@]}" \
     || check_exit_code="${?}"
 
+# 137 is the time ceiling's SIGKILL of the whole run. Hitting the memory ceiling looks different: the
+# kernel kills one process, typically a compiler or test binary, and the check fails on its
+# "signal: killed" with its usual exit code
 if [[ "${check_exit_code}" -eq 137 ]]; then
-    echo "ERROR: The check was killed at a ceiling: ${TIME_LIMIT_SECONDS}s of time or ${MEMORY_LIMIT} of memory. Nothing it started survives the container." >&2
+    echo "ERROR: The check hit its ${TIME_LIMIT_SECONDS}s time ceiling and was killed. Nothing it started survives the container." >&2
 fi
 exit "${check_exit_code}"
