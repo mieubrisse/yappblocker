@@ -67,7 +67,12 @@ image="golang:${pinned_go_version}-bookworm"
 echo "Warming the module cache and vulnerability database in volume '${CACHE_VOLUME_NAME}' (image ${image}, with network)..."
 # Everything the check would otherwise download, fetched with network so the check can run without
 # it: each module's dependencies, each pinned tool's, and govulncheck's database. The database is
-# replaced on every run so the verdict uses a current copy, as CI's does.
+# fetched fresh on every run so the verdict uses a current copy, as CI's does, into a directory of
+# its own that this run alone reads: several agents share the volume, and replacing one shared
+# directory would pull it out from under a run that is mid-govulncheck. Copies older than an hour
+# belong to no live run (each is capped at TIME_LIMIT_SECONDS) and are pruned. The Go module cache
+# needs no such care: the go command is built for concurrent use of it. The script's only stdout
+# is the new directory's name; the go command's progress goes to stderr.
 # shellcheck disable=SC2016  # expanded inside the container, not here
 warm_script='
 set -euo pipefail
@@ -79,20 +84,26 @@ go -C tools mod tidy -diff
 for modfile_filepath in tools/*.mod; do
     go -C tools mod download -modfile="$(basename "${modfile_filepath}")"
 done
-staging_dirpath="$(mktemp -d /cache/vulndb.XXXXXX)"
+find /cache -mindepth 1 -maxdepth 1 -name "vulndb.*" -mmin +60 -exec rm -rf {} +
+vulndb_dirpath="$(mktemp -d /cache/vulndb.XXXXXX)"
 curl --fail --silent --show-error --location "${VULN_DB_ARCHIVE_URL}" --output /tmp/vulndb.zip
 # The image has no unzip; its Python does, in the standard library
-python3 -m zipfile -e /tmp/vulndb.zip "${staging_dirpath}"
-chmod -R a+rX "${staging_dirpath}"
-rm -rf /cache/vulndb
-mv "${staging_dirpath}" /cache/vulndb
+python3 -m zipfile -e /tmp/vulndb.zip "${vulndb_dirpath}"
+chmod -R a+rX "${vulndb_dirpath}"
+basename "${vulndb_dirpath}"
 '
-docker run --rm --init \
-    --volume "${CACHE_VOLUME_NAME}:/cache" \
-    --volume "${repo_root_dirpath}:/src:ro" --workdir /src \
-    --env GOMODCACHE=/cache/gomod --env GOCACHE=/tmp/gocache --env GOFLAGS=-modcacherw \
-    --env VULN_DB_ARCHIVE_URL="${VULN_DB_ARCHIVE_URL}" \
-    "${image}" bash -c "${warm_script}"
+vulndb_dirname="$(
+    docker run --rm --init \
+        --volume "${CACHE_VOLUME_NAME}:/cache" \
+        --volume "${repo_root_dirpath}:/src:ro" --workdir /src \
+        --env GOMODCACHE=/cache/gomod --env GOCACHE=/tmp/gocache --env GOFLAGS=-modcacherw \
+        --env VULN_DB_ARCHIVE_URL="${VULN_DB_ARCHIVE_URL}" \
+        "${image}" bash -c "${warm_script}"
+)"
+if [[ ! "${vulndb_dirname}" =~ ^vulndb\.[A-Za-z0-9]+$ ]]; then
+    echo "ERROR: Expected the warm-up to print its vulnerability database directory's name, but it printed '${vulndb_dirname}'" >&2
+    exit 1
+fi
 
 echo "Running '${CHECK_COMMAND[*]}' in a throwaway container (memory ${MEMORY_LIMIT}, ${CPU_LIMIT} CPUs, ${PIDS_LIMIT} pids, ${TIME_LIMIT_SECONDS}s)..."
 check_exit_code=0
@@ -119,7 +130,7 @@ docker run --rm --init \
     --env HOME=/tmp/home \
     --env GOMODCACHE=/cache/gomod --env GOCACHE=/tmp/gocache --env GOPROXY=off \
     --env GOLANGCI_LINT_CACHE=/tmp/golangci-lint \
-    --env YAPPBLOCKER_CHECK_VULN_DB=file:///cache/vulndb \
+    --env YAPPBLOCKER_CHECK_VULN_DB="file:///cache/${vulndb_dirname}" \
     "${image}" timeout --signal=KILL "${TIME_LIMIT_SECONDS}" "${CHECK_COMMAND[@]}" \
     || check_exit_code="${?}"
 
