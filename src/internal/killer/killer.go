@@ -189,6 +189,11 @@ func describeSurvival(app *config.App, runner CommandRunner, gracePeriod time.Du
 // extra osascript call is spent only when processes survive. A correctly named app
 // that left helpers behind takes that path too, and the name probe is what tells
 // the two apart.
+//
+// "Processes match" means `pgrep -f`, a substring match on whole command lines, so
+// a not-installed app whose match string turns up in some unrelated process — an
+// editor with the config open, a shell grepping for it — reads here as misnamed.
+// That is the same over-match every kill type already lives with.
 func describeSurvivorsAppleScriptCannotAddress(app *config.App, runner CommandRunner) string {
 	survivingPIDs := findPIDs(app, runner)
 	if len(survivingPIDs) == 0 {
@@ -207,7 +212,7 @@ func describeSurvivorsAppleScriptCannotAddress(app *config.App, runner CommandRu
 
 // appleScriptNoSuchObjectErrorCode is the error `id of application "X"` raises when
 // no application by that name exists, as in
-// `execution error: Can't get application "NoSuchAppXyz123". (-1728)`.
+// `execution error: Can’t get application "NoSuchAppXyz123". (-1728)`.
 const appleScriptNoSuchObjectErrorCode = "(-1728)"
 
 // canAppleScriptResolveApplication asks for the application's bundle identifier,

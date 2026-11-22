@@ -291,6 +291,9 @@ func TestOsascriptQuitThatIsIgnoredIsStillReported(t *testing.T) {
 	if len(ignored) != 1 || ignored[0].Name != "chrome" {
 		t.Errorf("expected the refusing app returned for the caller to notify about, got %v", ignored)
 	}
+	if probes := countNameProbes(runner); probes != 0 {
+		t.Errorf("expected no name probe for an app LaunchServices says is running, got %d", probes)
+	}
 }
 
 // TestPkillSurvivorsAreStillCheckedAgainstProcesses keeps the process-level path
