@@ -131,14 +131,11 @@ func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gr
 
 	var stillRunning []*config.App
 	for _, app := range apps {
-		survival := describeSurvival(app, runner)
+		survival := describeSurvival(app, runner, gracePeriod)
 		if survival == "" {
 			continue
 		}
-		log.Printf(
-			"Warning: kill of %q (%s) reported success but %s %v later — the app is ignoring it",
-			app.Match, app.Name, survival, gracePeriod,
-		)
+		log.Printf("Warning: kill of %q (%s) reported success but %s", app.Match, app.Name, survival)
 		stillRunning = append(stillRunning, app)
 	}
 
@@ -158,12 +155,12 @@ func reportAppsThatIgnoredTheirKill(apps []*config.App, runner CommandRunner, gr
 // `MessagesBlastDoorSupport`, `SafariPlatformSupport`, `Steam.../ipcserver` and a
 // `chrome-native-host` behind. A pkill signals processes, so for those kill types
 // the process table is the right place to look.
-func describeSurvival(app *config.App, runner CommandRunner) string {
+func describeSurvival(app *config.App, runner CommandRunner, gracePeriod time.Duration) string {
 	if app.KillType == config.KillTypeOsascript {
 		if isApplicationRunning(app, runner) {
-			return "the application is still running"
+			return fmt.Sprintf("the application is still running %v later — the app is ignoring it", gracePeriod)
 		}
-		return ""
+		return describeSurvivorsAppleScriptCannotAddress(app, runner)
 	}
 
 	survivingPIDs := findPIDs(app, runner)
@@ -171,7 +168,74 @@ func describeSurvival(app *config.App, runner CommandRunner) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%d process(es) are still running", len(survivingPIDs))
+	return fmt.Sprintf("%d process(es) are still running %v later — the app is ignoring it", len(survivingPIDs), gracePeriod)
+}
+
+// describeSurvivorsAppleScriptCannotAddress catches the one way an osascript app
+// can read as gone while nothing was quit: a `match` that is not a name AppleScript
+// can resolve. Such a name fails silently in both directions — `quit app "X"` exits
+// 0 having done nothing, and `application "X" is running` answers false rather than
+// erroring — so the application-level check above reads it as having obeyed its
+// quit, forever. It returns the empty string in every other case.
+//
+// An unresolvable name on its own proves nothing: an app configured but not
+// installed on this machine is valid, and Kevin keeps such entries on purpose
+// (Diablo III, 2026-11-07). The failure is the conjunction — processes still match
+// the app, yet AppleScript cannot address it, so no quit can have reached them. That
+// rule needs no allowlist of apps that are configured but absent, because an absent
+// app has no processes to match.
+//
+// The process table is consulted first because it is the cheap, common answer: the
+// extra osascript call is spent only when processes survive. A correctly named app
+// that left helpers behind takes that path too, and the name probe is what tells
+// the two apart.
+//
+// "Processes match" means `pgrep -f`, a substring match on whole command lines, so
+// a not-installed app whose match string turns up in some unrelated process — an
+// editor with the config open, a shell grepping for it — reads here as misnamed.
+// That is the same over-match every kill type already lives with.
+func describeSurvivorsAppleScriptCannotAddress(app *config.App, runner CommandRunner) string {
+	survivingPIDs := findPIDs(app, runner)
+	if len(survivingPIDs) == 0 {
+		return ""
+	}
+	if canAppleScriptResolveApplication(app, runner) {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"AppleScript cannot resolve that name, so the quit reached nothing, and %d process(es) matching it are still running — "+
+			"the match is probably not the application's name",
+		len(survivingPIDs),
+	)
+}
+
+// appleScriptNoSuchObjectErrorCode is the error `id of application "X"` raises when
+// no application by that name exists, as in
+// `execution error: Can’t get application "NoSuchAppXyz123". (-1728)`.
+const appleScriptNoSuchObjectErrorCode = "(-1728)"
+
+// canAppleScriptResolveApplication asks for the application's bundle identifier,
+// which, unlike `is running`, errors on a name LaunchServices does not know rather
+// than answering false. Reading an application's id does not launch it.
+//
+// Only the no-such-object error counts as unresolvable. Any other failure is logged
+// and read as resolvable, for the same reason as in isApplicationRunning: a broken
+// check must neither manufacture a failure nor pass in silence.
+func canAppleScriptResolveApplication(app *config.App, runner CommandRunner) bool {
+	stdout, err := runner.Run([]string{"osascript", "-e", fmt.Sprintf("id of application %q", app.Match)})
+	if err == nil {
+		return true
+	}
+	if strings.Contains(stdout, appleScriptNoSuchObjectErrorCode) {
+		return false
+	}
+
+	log.Printf(
+		"Warning: could not tell whether AppleScript can resolve %q (%s), so its kill is not being called a failure: %v%s",
+		app.Match, app.Name, err, formatOutputForLog(stdout),
+	)
+	return true
 }
 
 // isApplicationRunning asks LaunchServices whether the application is up, rather
