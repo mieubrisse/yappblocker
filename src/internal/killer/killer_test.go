@@ -27,6 +27,11 @@ type mockRunner struct {
 	isRunningAnswer string
 	// isRunningError makes that check unanswerable.
 	isRunningError error
+	// nameProbeOutput and nameProbeError are what `id of application "X"` reports.
+	// Both empty behaves like a name AppleScript resolves, which is every correctly
+	// configured app.
+	nameProbeOutput string
+	nameProbeError  error
 	// killOutput and killError are what a kill command reports back.
 	killOutput string
 	killError  error
@@ -56,6 +61,9 @@ func (m *mockRunner) Run(args []string) (string, error) {
 	// a kill.
 	if len(args) >= 3 && args[0] == "osascript" && strings.Contains(args[2], "is running") {
 		return m.isRunningAnswer, m.isRunningError
+	}
+	if len(args) >= 3 && args[0] == "osascript" && strings.HasPrefix(args[2], "id of application") {
+		return m.nameProbeOutput, m.nameProbeError
 	}
 
 	m.killHasBeenSent = true
@@ -254,6 +262,11 @@ func TestSurvivingHelperProcessesAreNotAFailedQuit(t *testing.T) {
 	if len(ignored) != 0 {
 		t.Errorf("expected nothing reported to the caller, got %v", ignored)
 	}
+	// Surviving processes are the suspicious path, so the name is probed — and a
+	// name that resolves is what clears them as helpers.
+	if probes := countNameProbes(runner); probes != 1 {
+		t.Errorf("expected exactly one name probe, got %d", probes)
+	}
 }
 
 func TestOsascriptQuitThatIsIgnoredIsStillReported(t *testing.T) {
@@ -277,6 +290,9 @@ func TestOsascriptQuitThatIsIgnoredIsStillReported(t *testing.T) {
 	}
 	if len(ignored) != 1 || ignored[0].Name != "chrome" {
 		t.Errorf("expected the refusing app returned for the caller to notify about, got %v", ignored)
+	}
+	if probes := countNameProbes(runner); probes != 0 {
+		t.Errorf("expected no name probe for an app LaunchServices says is running, got %d", probes)
 	}
 }
 
@@ -380,5 +396,146 @@ func TestFormatOutputForLog(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("%s: formatOutputForLog(%q) = %q, want %q", tt.name, tt.input, got, tt.expected)
 		}
+	}
+}
+
+// unresolvableNameProbeOutput is what `id of application "X"` printed for a name
+// AppleScript cannot resolve, measured on 2026-11-22.
+const unresolvableNameProbeOutput = "0:2: execution error: Can’t get application \"NoSuchAppXyz123\". (-1728)\n"
+
+func countNameProbes(runner *mockRunner) int {
+	count := 0
+	for _, cmd := range runner.commands {
+		if len(cmd) >= 3 && cmd[0] == "osascript" && strings.HasPrefix(cmd[2], "id of application") {
+			count++
+		}
+	}
+	return count
+}
+
+// TestUnresolvableNameWithSurvivingProcessesIsReported is KEV-240: a match
+// AppleScript cannot resolve makes `quit app` a silent no-op and `is running` a
+// silent false, so before this the app read as having obeyed its quit, forever.
+func TestUnresolvableNameWithSurvivingProcessesIsReported(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults: map[string]string{
+			"[N]oSuchAppXyz123": "4242\n4243\n",
+		},
+		isRunningAnswer: "false\n",
+		nameProbeOutput: unresolvableNameProbeOutput,
+		nameProbeError:  &ExitError{Code: 1},
+	}
+	apps := []*config.App{
+		{Name: "misnamed", Match: "NoSuchAppXyz123", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if !strings.Contains(logged, "NoSuchAppXyz123") ||
+		!strings.Contains(logged, "AppleScript cannot resolve that name") ||
+		!strings.Contains(logged, "2 process(es) matching it are still running") {
+		t.Errorf("expected a warning naming the unresolvable app and its surviving processes, got: %q", logged)
+	}
+	if strings.Count(logged, "\n") != 1 {
+		t.Errorf("expected exactly one log line, got: %q", logged)
+	}
+	if len(ignored) != 1 || ignored[0].Name != "misnamed" {
+		t.Errorf("expected the misnamed app returned for the caller to notify about, got %v", ignored)
+	}
+}
+
+// TestConfiguredButNotInstalledAppStaysSilent holds Kevin's ruling of 2026-11-07:
+// an app configured but not installed is valid. Its name does not resolve, but
+// nothing matches it either, so there is nothing to report — and no reason to
+// spend the name probe.
+func TestConfiguredButNotInstalledAppStaysSilent(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults:    map[string]string{},
+		isRunningAnswer: "false\n",
+		nameProbeOutput: unresolvableNameProbeOutput,
+		nameProbeError:  &ExitError{Code: 1},
+	}
+	apps := []*config.App{
+		{Name: "diablo3", Match: "Diablo III", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if logged != "" {
+		t.Errorf("expected no output for an app that is not installed, got: %q", logged)
+	}
+	if len(ignored) != 0 {
+		t.Errorf("expected nothing reported, got %v", ignored)
+	}
+	if probes := countNameProbes(runner); probes != 0 {
+		t.Errorf("expected no name probe when nothing matches, got %d", probes)
+	}
+}
+
+// TestCorrectlyNamedAppThatQuitIsNotProbed covers the common path: the app obeyed
+// its quit and took its processes with it, so the extra osascript call is never
+// spent and nothing is said.
+func TestCorrectlyNamedAppThatQuitIsNotProbed(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults: map[string]string{
+			"[W]hatsApp": "700\n",
+		},
+		pgrepResultsAfterKill: map[string]string{
+			"[W]hatsApp": "",
+		},
+		isRunningAnswer: "false\n",
+	}
+	apps := []*config.App{
+		{Name: "whatsapp", Match: "WhatsApp", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if logged != "" {
+		t.Errorf("expected no output for an app that quit, got: %q", logged)
+	}
+	if len(ignored) != 0 {
+		t.Errorf("expected nothing reported, got %v", ignored)
+	}
+	if probes := countNameProbes(runner); probes != 0 {
+		t.Errorf("expected no name probe once the processes are gone, got %d", probes)
+	}
+}
+
+// TestUnanswerableNameProbeIsLoggedWithoutManufacturingAFailure: only the
+// no-such-object error means unresolvable. Any other failure of the probe is said
+// out loud and then read as resolvable, so a broken probe cannot invent a refusal.
+func TestUnanswerableNameProbeIsLoggedWithoutManufacturingAFailure(t *testing.T) {
+	runner := &mockRunner{
+		pgrepResults: map[string]string{
+			"[M]essages": "100\n",
+		},
+		isRunningAnswer: "false\n",
+		nameProbeOutput: "execution error: something else broke (-600)\n",
+		nameProbeError:  &ExitError{Code: 1},
+	}
+	apps := []*config.App{
+		{Name: "messages", Match: "Messages", KillType: config.KillTypeOsascript},
+	}
+
+	var ignored []*config.App
+	logged := captureLogOutput(t, func() {
+		_, ignored = FindAndKillApps(apps, false, false, runner, noGracePeriodSoTestsDoNotSleep)
+	})
+
+	if !strings.Contains(logged, "could not tell whether AppleScript can resolve") || !strings.Contains(logged, "-600") {
+		t.Errorf("expected the unanswerable probe logged with its own output, got: %q", logged)
+	}
+	if len(ignored) != 0 {
+		t.Errorf("expected no manufactured failure, got %v", ignored)
 	}
 }
