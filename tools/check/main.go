@@ -41,6 +41,12 @@ const (
 
 	// goWorkEnvVar is set to off so a go.work file above the repo cannot change module resolution.
 	goWorkEnvVar = "GOWORK"
+
+	// vulnDBEnvVar, when set, is the vulnerability database URL govulncheck reads instead of its
+	// default, https://vuln.go.dev. The container envelope (check-in-container.sh) runs with no
+	// network, so it mirrors the database into a file:// URL and points this at it. govulncheck
+	// itself has only a -db flag, no environment variable.
+	vulnDBEnvVar = "YAPPBLOCKER_CHECK_VULN_DB"
 )
 
 var (
@@ -127,7 +133,7 @@ func run() error {
 	pass("Lint OK")
 
 	step("Running govulncheck")
-	if err := runIn(srcDirPath, pinnedTools[govulncheckToolName], "./..."); err != nil {
+	if err := runIn(srcDirPath, pinnedTools[govulncheckToolName], govulncheckArgs()...); err != nil {
 		return stacktrace.Propagate(err, "govulncheck failed")
 	}
 	pass("Vulncheck OK")
@@ -183,6 +189,17 @@ func reexecUnderPinnedToolchain(toolsDirPath string, pinnedGoVersion string) (in
 		return exitErr.ExitCode(), nil
 	}
 	return 0, nil
+}
+
+// govulncheckArgs returns govulncheck's arguments, reading the database from the URL in
+// vulnDBEnvVar when one is set.
+func govulncheckArgs() []string {
+	vulnDBURL := os.Getenv(vulnDBEnvVar)
+	if vulnDBURL == "" {
+		return []string{"./..."}
+	}
+	fmt.Printf("  reading the vulnerability database from %v (%v)\n", vulnDBURL, vulnDBEnvVar)
+	return []string{"-db", vulnDBURL, "./..."}
 }
 
 func clearVerdictAffectingEnv() error {

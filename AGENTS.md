@@ -23,6 +23,8 @@ CI and the pre-commit hook run exactly this string; `make check` is an alias for
 
 The first run on a machine downloads the pinned toolchain and modules from `proxy.golang.org`, and so may a first `make build` or `make test`. The sandbox allows writes to the Go build cache but not that download, so run the first one outside the sandbox.
 
+On a Linux host with Docker (the factory box), run `bash tools/check-in-container.sh` instead. It runs that same command inside a throwaway container with no network, a read-only root, a RAM-backed `/tmp` and measured ceilings, so nothing the check starts (a stray process, a bound port, a scratch file) outlives the run. It needs only Docker: the image is derived from the `toolchain` line in `src/go.mod`, and it carries gcc for `-race`. Each run first warms a module and vulnerability-database cache in the Docker volume `yappblocker-check-cache`, with network. The script's comments explain every flag and ceiling (Linear KEV-138).
+
 How a Change Lands
 ------------------
 
