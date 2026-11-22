@@ -81,14 +81,19 @@ echo "Warming the module cache and vulnerability database in volume '${CACHE_VOL
 # shellcheck disable=SC2016  # expanded inside the container, not here
 warm_script='
 set -euo pipefail
-go -C src mod download
+# Fetching is best-effort: a module the go command refuses here (an untidy go.mod or go.sum, which
+# it cannot fix on the read-only mount) is for the check to report, with its fix, so a refusal is
+# noted and the check still runs. The go command prints to stderr, keeping stdout for the name below
+fetch() {
+    "$@" >&2 || echo "warm-up: \"$*\" failed; the check below gives the verdict" >&2
+}
+fetch go -C src mod download
 # The check runs `go mod tidy -diff`, which also needs the modules that dependencies import only in
-# their own tests; `go mod download` skips those, so let tidy fetch them (it changes no file here).
-# An untidy module is for the check to report, with its fix, so tidy is not allowed to fail here
-go -C src mod tidy -diff >&2 || true
-go -C tools mod tidy -diff >&2 || true
+# their own tests. `go mod download` skips those, so tidy fetches them; it changes no file here
+fetch go -C src mod tidy -diff
+fetch go -C tools mod tidy -diff
 for modfile_filepath in tools/*.mod; do
-    go -C tools mod download -modfile="$(basename "${modfile_filepath}")"
+    fetch go -C tools mod download -modfile="$(basename "${modfile_filepath}")"
 done
 find /cache -mindepth 1 -maxdepth 1 -name "vulndb.*" -mmin +60 -exec rm -rf {} + || true
 vulndb_dirpath="$(mktemp -d /cache/vulndb.XXXXXX)"
