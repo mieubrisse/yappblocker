@@ -113,7 +113,10 @@ vulndb_dirname="$(
         --env VULN_DB_ARCHIVE_URL="${VULN_DB_ARCHIVE_URL}" \
         --env VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS="${VULN_DB_DOWNLOAD_TIME_LIMIT_SECONDS}" \
         "${image}" timeout --signal=KILL "${WARM_TIME_LIMIT_SECONDS}" bash -c "${warm_script}"
-)"
+)" || {
+    echo "ERROR: The warm-up failed or hit its ${WARM_TIME_LIMIT_SECONDS}s time limit (exit ${?}); the check did not run" >&2
+    exit 1
+}
 if [[ ! "${vulndb_dirname}" =~ ^vulndb\.[A-Za-z0-9]+$ ]]; then
     echo "ERROR: Expected the warm-up to print its vulnerability database directory's name, but it printed '${vulndb_dirname}'" >&2
     exit 1
