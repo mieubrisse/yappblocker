@@ -5,12 +5,13 @@
 # called setsid to escape a process-group kill and that `go test -timeout` would orphan. The network
 # namespace takes every bound port with it, and the tmpfs takes every scratch file.
 #
-# The flags are the policy, not Docker: without them a container has no ceilings at all. Each is
+# The flags are the policy, not the runtime: without them a container has no ceilings at all. Each is
 # explained where it is set below.
 #
-# Needs Docker on a Linux host and nothing else: no Go, no C compiler. On the factory box, Docker
-# comes from the dotfiles repo's roles/docker, whose header is the box's provisioning notes. Run
-# from anywhere:
+# Needs rootless Podman on a Linux host, reached through its `docker` command, and nothing else: no
+# Go, no C compiler. On the factory box it comes from the dotfiles repo's roles/containers, whose
+# header is the box's provisioning notes; rootful Docker is gone from that box because its socket was
+# root to every agent (Linear KEV-375). Run from anywhere:
 #   bash tools/check-in-container.sh
 set -euo pipefail
 script_dirpath="$(cd "$(dirname "${0}")" && pwd)"
@@ -43,19 +44,8 @@ CACHE_VOLUME_NAME="yappblocker-check-cache"
 # govulncheck's database as one archive, served by the same host govulncheck queries by default
 VULN_DB_ARCHIVE_URL="https://vuln.go.dev/vulndb.zip"
 
-# Set when this script has re-run itself under `sg docker`, so a second failure stops instead of looping
-SG_REEXEC_GUARD_ENV_VAR="YAPPBLOCKER_CHECK_IN_CONTAINER_SG"
-
-# A process started before its user joined the docker group (an agent server that predates the
-# grant) does not carry the group. If the user is a member on paper, re-run under `sg docker`,
-# which grants it to this process alone without a restart or a password.
 if ! docker info >/dev/null 2>&1; then
-    if [[ -z "${!SG_REEXEC_GUARD_ENV_VAR:-}" ]] \
-        && getent group docker | cut -d: -f4 | tr ',' '\n' | grep -qx "$(id -un)"; then
-        export "${SG_REEXEC_GUARD_ENV_VAR}=1"
-        exec sg docker -c "$(printf '%q ' bash "${script_dirpath}/$(basename "${0}")" "$@")"
-    fi
-    echo "ERROR: Cannot reach the Docker daemon as $(id -un); 'docker info' fails. Docker must be installed and this user in the docker group." >&2
+    echo "ERROR: Cannot reach a container runtime as $(id -un); 'docker info' fails. On the factory box, rootless Podman comes from the dotfiles repo's roles/containers." >&2
     exit 1
 fi
 
@@ -129,8 +119,10 @@ check_exit_code=0
 # --read-only and --tmpfs: the only writable place is a RAM-backed /tmp that vanishes with the run;
 #   exec because go test and go run execute the binaries they build there.
 # --memory with an equal --memory-swap: a hard ceiling, with no swap to spill into.
-# --user: the caller's uid and primary group (not the docker group an `sg` re-run lends this shell),
-#   so anything the run could create carries the caller's ownership.
+# --userns=keep-id: rootless, the container's root is the caller and every other uid is one of the
+#   caller's subordinate ids. keep-id maps the caller to its own uid and group inside instead, so the
+#   check runs unprivileged, as the owner of the mounted source and cache, and anything it could create
+#   carries the caller's ownership.
 # --cap-drop and no-new-privileges: a test needs no capability, so it gets none.
 # timeout inside the container, not around `docker run`: killing the client does not stop a
 #   container, but killing its first process ends its PID namespace, and with it every process the
@@ -141,7 +133,7 @@ docker run --rm --init \
     --memory "${MEMORY_LIMIT}" --memory-swap "${MEMORY_LIMIT}" \
     --cpus "${CPU_LIMIT}" --pids-limit "${PIDS_LIMIT}" \
     --cap-drop ALL --security-opt no-new-privileges \
-    --user "$(id -u):$(id -g "$(id -un)")" \
+    --userns=keep-id \
     --volume "${CACHE_VOLUME_NAME}:/cache:ro" \
     --volume "${repo_root_dirpath}:/src:ro" --workdir /src \
     --env HOME=/tmp/home \
