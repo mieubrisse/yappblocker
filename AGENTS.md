@@ -19,7 +19,7 @@ The full check is one command, run from the repo root:
 go -C tools run ./check
 ```
 
-CI and the pre-commit hook run exactly this string; `make check` is an alias for it. It needs only `go` and `git`: it re-runs itself under the Go toolchain pinned by the `toolchain` line in `src/go.mod`, builds golangci-lint, govulncheck and deadcode at the versions pinned in `tools/*.mod`, and fails if any version it ran with differs from its pin, so its verdict matches CI's. It then checks modules → formatting → vet → lint → govulncheck → deadcode → tests (`-race`) → per-package coverage. In a fresh environment, run it before anything else.
+CI and the pre-commit hook run exactly this string; `make check` is an alias for it. On macOS it needs only `go` and `git`. On Linux it also needs a C compiler and the C library headers, because Go's race detector needs cgo there; the README's prerequisites name the packages. It re-runs itself under the Go toolchain pinned by the `toolchain` line in `src/go.mod`, fails on Linux with an error naming the compiler if `go env CC` is missing or cannot build the race runtime, builds golangci-lint, govulncheck and deadcode at the versions pinned in `tools/*.mod`, and fails if any version it ran with differs from its pin, so its verdict matches CI's. It then checks modules → formatting → vet → lint → govulncheck → deadcode → tests (`-race`) → per-package coverage. In a fresh environment, run it before anything else.
 
 The first run on a machine downloads the pinned toolchain and modules from `proxy.golang.org`, and so may a first `make build` or `make test`. The sandbox allows writes to the Go build cache but not that download, so run the first one outside the sandbox.
 

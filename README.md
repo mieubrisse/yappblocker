@@ -199,7 +199,8 @@ Development
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.21 or newer, and Git. That is all the full check needs.
+- [Go](https://go.dev/dl/) 1.21 or newer, and Git. On macOS that is all the full check needs.
+- On Linux, also a C compiler and the C library headers (on Debian or Ubuntu: `gcc` and `libc6-dev`), because Go's race detector needs cgo there. The full check verifies this first, and names the compiler if it is missing.
 - [GNU Make](https://www.gnu.org/software/make/), only for the convenience targets below.
 
 ### Running the full check

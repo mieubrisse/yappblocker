@@ -31,7 +31,7 @@ setup:
 		fi; \
 	fi
 
-# The full check pipeline. It needs only `go` and `git`: see tools/check/main.go.
+# The full check pipeline. For what it needs on the host, see tools/check/main.go.
 check:
 	go -C tools run ./check
 
