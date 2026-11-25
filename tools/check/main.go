@@ -3,11 +3,10 @@
 //
 // Run it from the repo root as `go -C tools run ./check`. On the host it needs `go` and `git`, and on
 // Linux also a C compiler with the C library's headers, because the race detector needs cgo
-// everywhere but macOS; it verifies that compiler before building or testing anything. It
-// re-executes itself under the Go toolchain pinned in src/go.mod, builds each check tool from the
-// version pinned in its own modfile in this directory, and fails if any version it ran with differs
-// from its pin. That is what makes CI, the pre-commit hook and an agent's shell reach the same
-// verdict.
+// everywhere but macOS. It re-executes itself under the Go toolchain pinned in src/go.mod, verifies
+// that compiler, builds each check tool from the version pinned in its own modfile in this
+// directory, and fails if any version it ran with differs from its pin. That is what makes CI, the
+// pre-commit hook and an agent's shell reach the same verdict.
 package main
 
 import (
@@ -54,7 +53,7 @@ const (
 var (
 	// verdictAffectingEnvVars are go settings from the caller's shell that would change what the
 	// check builds or tests, and so make its verdict differ from CI's. The runner clears them.
-	verdictAffectingEnvVars = []string{"GOFLAGS", "GOOS", "GOARCH", "GOEXPERIMENT", "CGO_ENABLED"}
+	verdictAffectingEnvVars = []string{"GOFLAGS", "GOOS", "GOARCH", "GOEXPERIMENT"}
 )
 
 func main() {

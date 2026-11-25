@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"os/exec"
+	"os"
 	"runtime"
-	"strings"
 
 	"github.com/mieubrisse/stacktrace"
 )
@@ -13,46 +11,51 @@ const (
 	// darwinGOOS is the one platform where the go command's race detector does not need cgo.
 	darwinGOOS = "darwin"
 
-	// raceRuntimePackage is the package `go test -race` compiles with the C compiler.
-	raceRuntimePackage = "runtime/cgo"
+	// cgoProbePackage is a standard-library cgo package that `go test -race` builds off macOS.
+	// Building it needs both the C compiler and the C library's headers.
+	cgoProbePackage = "runtime/cgo"
 
-	installCCompilerAdvice = "Install a C compiler and the C library headers (on Debian or Ubuntu: gcc and libc6-dev), " +
-		"or set CC to a compiler this host has. On a host with Podman, `bash tools/check-in-container.sh` needs neither"
+	cgoEnabledEnvVar = "CGO_ENABLED"
 )
 
-// verifyCCompiler fails, before anything slow runs, if this host lacks the C compiler that the
-// race-detector tests need everywhere but macOS. Without it the go command turns cgo off silently
-// and the test step fails with `go: -race requires cgo`, which does not say what is missing.
+// verifyCCompiler fails, before any check tool is built or test is run, if this host lacks the C
+// compiler that the race-detector tests need everywhere but macOS.
+//
+// It turns cgo on explicitly, for this and every later go command. By default the go command turns
+// cgo off when it finds no C compiler, so the test step would fail with `go: -race requires cgo`,
+// which does not say what is missing; with cgo on, it names the compiler it could not run. Turning
+// it on also overrides a CGO_ENABLED=0 in the caller's shell, which would make the verdict differ
+// from CI's.
 func verifyCCompiler(dirPath string) error {
 	if runtime.GOOS == darwinGOOS {
 		return nil
 	}
 	step("Verifying the C compiler that the race detector needs")
-
-	compilerCommand, err := outputIn(dirPath, "go", "env", "CC")
-	if err != nil {
-		return stacktrace.Propagate(err, "An error occurred getting the C compiler the go command uses")
+	if err := os.Setenv(cgoEnabledEnvVar, "1"); err != nil {
+		return stacktrace.Propagate(err, "An error occurred setting '%v' to '1'", cgoEnabledEnvVar)
 	}
-	if err := verifyCCompilerOnPath(compilerCommand); err != nil {
-		return err
+	if err := buildCgoProbe(dirPath); err != nil {
+		return stacktrace.Propagate(err, "An error occurred building with the C compiler")
 	}
-	// A compiler without the C library's headers is on PATH but cannot build the race runtime.
-	if err := runIn(dirPath, "go", "build", "-race", raceRuntimePackage); err != nil {
-		return stacktrace.Propagate(err, "The C compiler '%v' is on PATH but cannot build what the race detector (`go test -race`) needs; its output is above. %v", compilerCommand, installCCompilerAdvice)
-	}
-	fmt.Printf("  %v\n", compilerCommand)
 	pass("C compiler OK")
 	return nil
 }
 
-// verifyCCompilerOnPath takes a compiler command as `go env CC` prints it, flags included.
-func verifyCCompilerOnPath(compilerCommand string) error {
-	fields := strings.Fields(compilerCommand)
-	if len(fields) == 0 {
-		return stacktrace.NewError("The go command names no C compiler (`go env CC` is empty), which the race detector (`go test -race`) needs on %v. %v", runtime.GOOS, installCCompilerAdvice)
+func buildCgoProbe(dirPath string) error {
+	// Only the go command knows how to read CC (quoting, flags, its env file), so let it decide
+	// whether the compiler works, and report the one it used.
+	compilerCommand, err := outputIn(dirPath, "go", "env", "CC")
+	if err != nil {
+		return stacktrace.Propagate(err, "An error occurred getting the C compiler the go command uses")
 	}
-	if _, err := exec.LookPath(fields[0]); err != nil {
-		return stacktrace.NewError("Missing C compiler: '%v' is not on PATH, and the race detector (`go test -race`) needs it on %v. %v", fields[0], runtime.GOOS, installCCompilerAdvice)
+	if err := runIn(dirPath, "go", "build", "-race", cgoProbePackage); err != nil {
+		return stacktrace.Propagate(
+			err,
+			"The C compiler '%v' is missing, or cannot build what the race detector (`go test -race`) needs on %v; the go command's error is above. "+
+				"Install a C compiler and the C library headers (on Debian or Ubuntu: gcc and libc6-dev), or set CC to a compiler this host has. "+
+				"On a host with rootless Podman, `bash tools/check-in-container.sh` needs neither",
+			compilerCommand, runtime.GOOS,
+		)
 	}
 	return nil
 }
