@@ -1,11 +1,12 @@
 // Command check runs yappblocker's full check pipeline: module tidiness, formatting, vet, lint,
 // govulncheck, deadcode, tests with the race detector, and the per-package coverage gate.
 //
-// Run it from the repo root as `go -C tools run ./check`. It needs only `go` and `git` on the host:
-// it re-executes itself under the Go toolchain pinned in src/go.mod, builds each check tool from the
-// version pinned in its own modfile in this directory, and fails if any version it ran with differs
-// from its pin. That is what makes CI, the pre-commit hook and an agent's shell reach the same
-// verdict.
+// Run it from the repo root as `go -C tools run ./check`. On the host it needs `go` and `git`, and on
+// Linux also a C compiler with the C library's headers, because the race detector needs cgo
+// everywhere but macOS. It re-executes itself under the Go toolchain pinned in src/go.mod, verifies
+// that compiler, builds each check tool from the version pinned in its own modfile in this
+// directory, and fails if any version it ran with differs from its pin. That is what makes CI, the
+// pre-commit hook and an agent's shell reach the same verdict.
 package main
 
 import (
@@ -95,6 +96,10 @@ func run() error {
 	// Every go command this runner starts, and every tool that shells out to go, gets the pin too.
 	if err := os.Setenv(goToolchainEnvVar, pinnedGoVersion); err != nil {
 		return stacktrace.Propagate(err, "An error occurred setting '%v' to '%v'", goToolchainEnvVar, pinnedGoVersion)
+	}
+
+	if err := verifyCCompiler(srcDirPath); err != nil {
+		return stacktrace.Propagate(err, "An error occurred verifying the C compiler")
 	}
 
 	pinnedTools, err := buildAndVerifyPinnedTools(toolsDirPath, pinnedGoVersion)
